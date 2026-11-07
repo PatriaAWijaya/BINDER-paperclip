@@ -1,0 +1,1 @@
+DROP TABLE "company_onboarding_seeds" CASCADE;

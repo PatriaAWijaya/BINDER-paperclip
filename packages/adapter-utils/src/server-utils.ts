@@ -4253,10 +4253,8 @@ export function resolvePaperclipDesiredSkillNames(
 export const PAPERCLIP_OPERATIONAL_SKILL_KEY =
   "paperclipai/paperclip/paperclip";
 
-export const PAPERCLIP_FEEDBACK_SKILL_KEYS = [
-  "paperclipai/paperclip/complain",
-  "paperclipai/paperclip/suggestion-box",
-] as const;
+// Fase 3.1: complain + suggestion-box dikeluarkan dari set BINDER (tidak diadaptasi).
+export const PAPERCLIP_FEEDBACK_SKILL_KEYS = [] as const;
 
 /**
  * Native Paperclip Runner sessions receive the control-plane contract through
