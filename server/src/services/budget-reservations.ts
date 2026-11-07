@@ -6,6 +6,7 @@ import { withOperationAccountingTransaction } from "./accounting-transaction.js"
 import { queueBudgetEvaluation } from "./budget-evaluation-work.js";
 import { lockBudgetAdmissionControls } from "./budget-admission-controls.js";
 import { budgetServiceInTransaction } from "./budgets.js";
+import { checkBinderFundingAdmission } from "./binder-funding.js";
 import { withBudgetSpan } from "./budget-tracing.js";
 import type { ActivityPublication } from "./activity-log.js";
 import { readClaimedNativeStopRecovery } from "./native-runtime/native-cancellation-request.js";
@@ -57,6 +58,13 @@ export async function recheckRunBudgetReservationInTransaction(
     .evaluateAdmission(run.companyId, run.agentId, { projectId: reservation.projectId, runId: run.id,
       admittedRecovery: Boolean(recoveryLeaseOwner) });
   if (block) return block.reason;
+  // BINDER funding: pool/amplop yang sudah dikonfigurasi ikut mengunci
+  // dispatch. Recovery memakai hold yang sudah diakui (diperiksa di bawah),
+  // jadi pemeriksaan ini hanya untuk dispatch biasa.
+  if (!recoveryLeaseOwner) {
+    const binderBlock = await checkBinderFundingAdmission(tx, run.companyId, run.issueId);
+    if (binderBlock) return binderBlock;
+  }
   const [agent] = await tx.select({ status: agents.status, lifecycleState: agents.lifecycleState }).from(agents)
     .where(and(eq(agents.companyId, run.companyId), eq(agents.id, run.agentId)));
   if (!agent || agent.lifecycleState !== "ready" || ["paused", "terminated", "pending_approval"].includes(agent.status))
@@ -119,6 +127,11 @@ export async function reserveRunBudget(db: Db, companyId: string, runId: string,
     if (stopRecovery) throw conflict("Native Stop recovery requires the original held reservation");
     const { block, policies, observations } = await budgetServiceInTransaction(tx, publications).evaluateAdmission(companyId, run.agentId, { projectId, runId });
     if (block) return { admissionBlockReason: block.reason };
+    // BINDER funding: pool habis (hard stop di nol) atau amplop tugas habis
+    // menolak dispatch baru. Tanpa baris pool (pendanaan belum dikonfigurasi
+    // untuk company ini) tidak ada blokir — alur yang sudah ada tetap jalan.
+    const binderBlock = await checkBinderFundingAdmission(tx, companyId, run.issueId);
+    if (binderBlock) return { admissionBlockReason: binderBlock };
     // A budget release can start asynchronous resume hooks. Capacity alone
     // does not authorize dispatch before that lifecycle operation is ready.
     const [agent] = await tx.select({ status: agents.status, lifecycleState: agents.lifecycleState }).from(agents)

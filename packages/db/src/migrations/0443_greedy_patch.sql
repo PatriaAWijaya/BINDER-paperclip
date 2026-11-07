@@ -1,0 +1,2 @@
+ALTER TABLE "ledger_entries" ALTER COLUMN "project_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "ledger_entries" ADD CONSTRAINT "ledger_entries_project_scope_check" CHECK ("ledger_entries"."project_id" is not null or "ledger_entries"."kind" in ('top_up', 'adjustment', 'rollover'));

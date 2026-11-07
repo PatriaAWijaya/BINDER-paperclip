@@ -906,6 +906,55 @@ export const BUDGET_INCIDENT_RESOLUTION_ACTIONS = [
 ] as const;
 export type BudgetIncidentResolutionAction = (typeof BUDGET_INCIDENT_RESOLUTION_ACTIONS)[number];
 
+/**
+ * BINDER funding (PRD Bab 3 / v1.16): pool top-up per company + amplop bid
+ * per tugas + ledger kanonik. Angka-angka ini adalah pagu yang ditetapkan
+ * owner dan bisa diubah owner kapan pun atas alasan strategis (PRD Bab 14);
+ * konstanta di sini adalah nilai default, bukan nilai yang dikunci.
+ */
+// Default top-up bulanan pool per company: $20 (dalam sen).
+export const BINDER_POOL_DEFAULT_MONTHLY_CENTS = 2000;
+// Amplop bid per tugas: $5 s.d. $30 (dalam sen).
+export const BINDER_ENVELOPE_MIN_CENTS = 500;
+export const BINDER_ENVELOPE_MAX_CENTS = 3000;
+// Ambang peringatan pool/amplop (P0-4): persen dana yang sudah terpakai.
+export const BINDER_WARN_PERCENT_70 = 70;
+export const BINDER_WARN_PERCENT_90 = 90;
+
+/** Jenis pergerakan dana yang tercatat di ledger kanonik BINDER. */
+export const BINDER_LEDGER_KINDS = [
+  "top_up",
+  "envelope_allocate",
+  "usage",
+  "qc_cost",
+  "envelope_release",
+  "adjustment",
+  "rollover",
+] as const;
+export type BinderLedgerKind = (typeof BINDER_LEDGER_KINDS)[number];
+
+/** Status amplop bid per tugas. */
+export const BINDER_ENVELOPE_STATUSES = [
+  "proposed",
+  "approved",
+  "active",
+  "exhausted",
+  "escalated",
+  "closed",
+  "cancelled",
+] as const;
+export type BinderEnvelopeStatus = (typeof BINDER_ENVELOPE_STATUSES)[number];
+
+/** Status amplop yang masih hidup (satu amplop hidup per tugas). */
+export const BINDER_ENVELOPE_LIVE_STATUSES = [
+  "proposed",
+  "approved",
+  "active",
+  "exhausted",
+  "escalated",
+] as const;
+export type BinderEnvelopeLiveStatus = (typeof BINDER_ENVELOPE_LIVE_STATUSES)[number];
+
 export const HEARTBEAT_INVOCATION_SOURCES = [
   "timer",
   "assignment",

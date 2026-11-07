@@ -61,6 +61,19 @@ export {
 } from "./budget.js";
 
 export {
+  binderTopUpPoolSchema,
+  binderCreateEnvelopeSchema,
+  binderApproveEnvelopeSchema,
+  binderChargeUsageSchema,
+  binderUpdatePoolCapSchema,
+  type BinderTopUpPool,
+  type BinderCreateEnvelope,
+  type BinderApproveEnvelope,
+  type BinderChargeUsage,
+  type BinderUpdatePoolCap,
+} from "./binder-funding.js";
+
+export {
   createSmokeRunSchema,
   updateSmokeRunSchema,
   recordSmokeRunStepSchema,
@@ -643,11 +656,6 @@ export {
   type CreateGoal,
   type UpdateGoal,
 } from "./goal.js";
-
-export {
-  applyOnboardingSeedSchema,
-  type ApplyOnboardingSeed,
-} from "./onboarding-seed.js";
 
 export {
   createApprovalSchema,
