@@ -30,6 +30,20 @@ export {
   type BinderBidEnvelope,
   type LedgerEntry,
 } from "./binder_funding.js";
+export {
+  binderAgentModels,
+  binderTasks,
+  binderQcRoster,
+  binderQcAssignments,
+  binderQcScores,
+  binderApprovedActions,
+  type BinderAgentModel,
+  type BinderTask,
+  type BinderQcRosterMember,
+  type BinderQcAssignment,
+  type BinderQcScore,
+  type BinderApprovedAction,
+} from "./binder_task_flow.js";
 export { agentConfigRevisions } from "./agent_config_revisions.js";
 export { agentApiKeys } from "./agent_api_keys.js";
 export { agentRuntimeState } from "./agent_runtime_state.js";

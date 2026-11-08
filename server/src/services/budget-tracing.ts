@@ -7,7 +7,11 @@ type BudgetOperation = "budget.accounting.lock_wait" | "budget.accounting.recove
   | "budget.cancellation.deliver" | "budget.enforcement.deliver"
   | "budget.enforcement.scope" | "budget.exposure.evaluate"
   | "binder.funding.top_up" | "binder.funding.envelope_create"
-  | "binder.funding.envelope_approve" | "binder.funding.charge";
+  | "binder.funding.envelope_approve" | "binder.funding.charge"
+  | "binder.task.create" | "binder.task.transition" | "binder.task.submit_work"
+  | "binder.task.owner_decision" | "binder.qc.register" | "binder.qc.assign"
+  | "binder.qc.submit" | "binder.action.request" | "binder.action.issue"
+  | "binder.action.use" | "binder.action.revoke";
 
 /** Operator-gated OpenTelemetry only; these spans contain no prompt, receipt,
  * credential, or provider error text. Diagnostics never change accounting. */

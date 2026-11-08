@@ -955,6 +955,113 @@ export const BINDER_ENVELOPE_LIVE_STATUSES = [
 ] as const;
 export type BinderEnvelopeLiveStatus = (typeof BINDER_ENVELOPE_LIVE_STATUSES)[number];
 
+/**
+ * BINDER alur task + QC (PRD Bab 6.4; rencana Tahap 3 Fase 3.3).
+ * Mesin: Backlog → Todo → In Progress → In Review (QC) → Butuh Approval
+ * Patria → Done/Cancelled; Revisi sesudah QC gagal (maks 2 putaran, lalu
+ * eskalasi); Eskalasi = owner memutuskan langkah berikut.
+ * Keluar dari In Review HANYA lewat submitQcScore, dan masuk ke In Review
+ * HANYA lewat submitWorkForReview (wajib artifact utama) — transisi
+ * generik menolak keduanya, supaya mesin tidak bisa dilompati.
+ */
+export const BINDER_TASK_STATUSES = [
+  "backlog",
+  "todo",
+  "in_progress",
+  "in_review",
+  "revision",
+  "needs_owner_approval",
+  "escalated",
+  "done",
+  "cancelled",
+] as const;
+export type BinderTaskStatus = (typeof BINDER_TASK_STATUSES)[number];
+
+/** Transisi yang diizinkan antar status task BINDER. */
+export const BINDER_TASK_TRANSITIONS: Record<BinderTaskStatus, readonly BinderTaskStatus[]> = {
+  backlog: ["todo", "cancelled"],
+  todo: ["in_progress", "cancelled"],
+  in_progress: ["in_review", "cancelled"],
+  in_review: ["needs_owner_approval", "revision", "escalated"],
+  revision: ["in_progress", "cancelled"],
+  needs_owner_approval: ["done", "revision", "escalated", "cancelled"],
+  escalated: ["in_progress", "cancelled"],
+  done: [],
+  cancelled: [],
+};
+
+/**
+ * Cermin status task BINDER ke status `issues` Paperclip (supaya board /
+ * query yang sudah ada tetap jalan). 'revision' masih dikerjakan maker
+ * (in_progress); 'needs_owner_approval' masih dalam review (in_review);
+ * 'escalated' tertahan menunggu keputusan owner (blocked).
+ */
+export const BINDER_TASK_ISSUE_STATUS_MIRROR: Record<BinderTaskStatus, string> = {
+  backlog: "backlog",
+  todo: "todo",
+  in_progress: "in_progress",
+  in_review: "in_review",
+  revision: "in_progress",
+  needs_owner_approval: "in_review",
+  escalated: "blocked",
+  done: "done",
+  cancelled: "cancelled",
+};
+
+/** Pemetaan kolom Kanban Patria. */
+export const BINDER_TASK_KANBAN_COLUMNS: Record<string, readonly BinderTaskStatus[]> = {
+  Antrian: ["backlog", "todo"],
+  Dikerjakan: ["in_progress"],
+  Revisi: ["revision"],
+  "Butuh Approval": ["needs_owner_approval", "escalated"],
+  Selesai: ["done"],
+};
+
+/** Rubrik QC (P0-3): Kebenaran/bukti 30, Kelengkapan 25, Kepatuhan 25, Kualitas 20. */
+export const BINDER_QC_RUBRIC_MAX = {
+  truthEvidence: 30,
+  completeness: 25,
+  compliance: 25,
+  quality: 20,
+} as const;
+/** Skor minimal QC lolos: ≥ 75 + nol hard violation. */
+export const BINDER_QC_PASS_SCORE = 75;
+/** Maksimal putaran revisi QC: 2 — sesudah itu eskalasi ke owner. */
+export const BINDER_QC_MAX_REVISIONS = 2;
+
+/** Pelanggaran keras QC (P0-2): satu saja = QC gagal apa pun skornya. */
+export const BINDER_HARD_VIOLATION_CODES = [
+  "secret_in_packet",
+  "external_action_without_approval",
+  "cross_company_data",
+  "private_content_in_shared_memory",
+  "fabricated_evidence",
+  "spending_beyond_hard_stop",
+] as const;
+export type BinderHardViolationCode = (typeof BINDER_HARD_VIOLATION_CODES)[number];
+
+/** Family model agen — untuk aturan QC beda family (P0-1). */
+export const BINDER_MODEL_FAMILIES = ["meta", "anthropic", "google", "openai", "other"] as const;
+export type BinderModelFamily = (typeof BINDER_MODEL_FAMILIES)[number];
+
+/** Jenis aksi eksternal yang butuh approved_action_id (P1-11). */
+export const BINDER_APPROVED_ACTION_KINDS = [
+  "outreach_send",
+  "external_post",
+  "external_call",
+  "external_message",
+  "other",
+] as const;
+export type BinderApprovedActionKind = (typeof BINDER_APPROVED_ACTION_KINDS)[number];
+
+/**
+ * Biaya default satu review QC: $1 (100 sen). Pagu owner — bisa diubah
+ * kapan pun atas alasan strategis (PRD Bab 14); dibebankan ke pool,
+ * BUKAN ke amplop tugas (P1-10). Nilai ini default sampai Patria
+ * menetapkan harga review QC yang sebenarnya.
+ */
+export const BINDER_QC_REVIEW_COST_CENTS = 100;
+
 export const HEARTBEAT_INVOCATION_SOURCES = [
   "timer",
   "assignment",

@@ -3095,6 +3095,20 @@
       "when": 1794069945163,
       "tag": "0443_greedy_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 444,
+      "version": "7",
+      "when": 1794092980182,
+      "tag": "0444_late_green_goblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 445,
+      "version": "7",
+      "when": 1794094218445,
+      "tag": "0445_lovely_pyro",
+      "breakpoints": true
     }
   ]
 }

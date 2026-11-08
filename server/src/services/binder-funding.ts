@@ -446,121 +446,140 @@ export async function getLiveBidEnvelope(
 }
 
 /**
+ * Inti `chargeBinderUsage` — dipakai di dalam transaksi pemanggil supaya
+ * pemakaian dana dan pencatatan yang menyertainya (mis. skor QC di
+ * `submitQcScore`) atomik: satu transaksi, satu urutan lock, satu
+ * publikasi activity. Jangan panggil langsung dari luar service BINDER
+ * tanpa transaksi `withOperationAccountingTransaction` di sekelilingnya.
+ *
+ * Hard stop: pool habis atau amplop habis → conflict, TIDAK ada
+ * pembebanan sebagian dan TIDAK ada penurunan kualitas diam-diam.
+ * kind=qc_cost SELALU ke pool saja (P1-10), amplop tidak tersentuh.
+ */
+export async function chargeBinderUsageInTransaction(
+  tx: Db,
+  publications: ActivityPublication[],
+  input: BinderChargeUsage,
+) {
+  const amountUnits = centsToUnits(input.amountCents);
+  if (amountUnits <= 0n) throw badRequest("Charge amount must be greater than zero");
+  await lockBudgetAdmissionControls(tx, input.companyId, input.projectId);
+  const [project] = await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, input.projectId), eq(projects.companyId, input.companyId)));
+  if (!project) throw notFound("Project not found");
+  if (input.idempotencyKey) {
+    const [existing] = await tx
+      .select()
+      .from(ledgerEntries)
+      .where(
+        and(
+          eq(ledgerEntries.companyId, input.companyId),
+          eq(ledgerEntries.idempotencyKey, input.idempotencyKey),
+        ),
+      );
+    if (existing) {
+      const pool = await getBinderPool(tx, input.companyId);
+      // Invarian: entri ledger yang tercatat menyiratkan baris pool ada.
+      if (!pool) throw notFound("Binder pool not found");
+      return { pool, ledgerEntry: existing, envelope: null, charged: false };
+    }
+  }
+  const pool = await getBinderPool(tx, input.companyId);
+  if (!pool) {
+    throw conflict("Pool company belum dibuat — top-up pertama (atas approval owner) diperlukan sebelum pemakaian");
+  }
+  const balanceUnits = centsToUnits(pool.balanceCents);
+  if (balanceUnits < amountUnits) {
+    throw conflict("Pool company habis — hard stop di nol; top-up diperlukan sebelum pemakaian lanjut");
+  }
+  let envelope: BinderBidEnvelope | null = null;
+  if (input.kind === "usage" && input.issueId) {
+    envelope = await getLiveBidEnvelope(tx, input.companyId, input.issueId);
+    if (envelope) {
+      if (envelope.status === "proposed") {
+        throw conflict("Amplop tugas belum disetujui owner — pemakaian ditolak");
+      }
+      if (envelope.status !== "approved" && envelope.status !== "active") {
+        throw conflict(`Amplop tugas berstatus ${envelope.status} — pemakaian ditolak, eskalasi diperlukan`);
+      }
+      const spentUnits = centsToUnits(envelope.spentCents);
+      const amountCentsUnits = centsToUnits(envelope.amountCents);
+      if (spentUnits + amountUnits > amountCentsUnits) {
+        throw conflict(
+          "Amplop tugas tidak muat — eskalasi diperlukan (pecah tugas / naikkan amplop / kurangi scope)",
+        );
+      }
+    }
+  }
+  const newBalance = balanceUnits - amountUnits;
+  const [updatedPool] = await tx
+    .update(binderPools)
+    .set({ balanceCents: unitsToCents(newBalance), updatedAt: new Date() })
+    .where(eq(binderPools.id, pool.id))
+    .returning();
+  let updatedEnvelope: BinderBidEnvelope | null = null;
+  if (envelope) {
+    const spentUnits = centsToUnits(envelope.spentCents) + amountUnits;
+    const amountCentsUnits = centsToUnits(envelope.amountCents);
+    const status = spentUnits >= amountCentsUnits ? "exhausted" : "active";
+    const [row] = await tx
+      .update(binderBidEnvelopes)
+      .set({ spentCents: unitsToCents(spentUnits), status, updatedAt: new Date() })
+      .where(eq(binderBidEnvelopes.id, envelope.id))
+      .returning();
+    updatedEnvelope = row;
+    const remainingUnits = amountCentsUnits - spentUnits;
+    const level = warnLevelFor(remainingUnits, amountCentsUnits);
+    if (level > envelope.warnLevelNotified) {
+      await tx
+        .update(binderBidEnvelopes)
+        .set({ warnLevelNotified: level })
+        .where(eq(binderBidEnvelopes.id, envelope.id));
+      await noteEnvelopeWarning(tx, publications, { ...row, warnLevelNotified: level }, level);
+    }
+  }
+  const ledgerEntry = await insertLedgerEntry(tx, {
+    companyId: input.companyId,
+    projectId: input.projectId,
+    issueId: input.issueId ?? null,
+    poolId: pool.id,
+    envelopeId: updatedEnvelope?.id ?? envelope?.id ?? null,
+    kind: input.kind,
+    direction: "debit",
+    isMemo: false,
+    amountCents: unitsToCents(amountUnits),
+    reason: input.reason,
+    idempotencyKey: input.idempotencyKey ?? null,
+    relatedCostEventId: input.costEventId ?? null,
+    createdByUserId: input.createdByUserId ?? null,
+    createdByAgentId: input.createdByAgentId ?? null,
+  });
+  const poolLevel = warnLevelFor(newBalance, BigInt(pool.monthlyTopUpCents) * 10_000_000n);
+  if (poolLevel > pool.warnLevelNotified) {
+    const [warnedPool] = await tx
+      .update(binderPools)
+      .set({ warnLevelNotified: poolLevel })
+      .where(eq(binderPools.id, pool.id))
+      .returning();
+    await notePoolWarning(tx, publications, warnedPool, poolLevel);
+    return { pool: warnedPool, ledgerEntry, envelope: updatedEnvelope, charged: true };
+  }
+  return { pool: updatedPool, ledgerEntry, envelope: updatedEnvelope, charged: true };
+}
+
+/**
  * Bebankan pemakaian ke pool (dan ke amplop bila kind=usage dan tugas punya
  * amplop hidup). Hard stop: pool habis atau amplop habis → conflict, TIDAK
  * ada pembebanan sebagian dan TIDAK ada penurunan kualitas diam-diam.
  * kind=qc_cost SELALU ke pool saja (P1-10), amplop tidak tersentuh.
  */
 export async function chargeBinderUsage(db: Db, input: BinderChargeUsage) {
-  const amountUnits = centsToUnits(input.amountCents);
-  if (amountUnits <= 0n) throw badRequest("Charge amount must be greater than zero");
   return withBudgetSpan("binder.funding.charge", () =>
-    withOperationAccountingTransaction(db, input.companyId, async (tx, publications) => {
-      await lockBudgetAdmissionControls(tx, input.companyId, input.projectId);
-      const [project] = await tx
-        .select({ id: projects.id })
-        .from(projects)
-        .where(and(eq(projects.id, input.projectId), eq(projects.companyId, input.companyId)));
-      if (!project) throw notFound("Project not found");
-      if (input.idempotencyKey) {
-        const [existing] = await tx
-          .select()
-          .from(ledgerEntries)
-          .where(
-            and(
-              eq(ledgerEntries.companyId, input.companyId),
-              eq(ledgerEntries.idempotencyKey, input.idempotencyKey),
-            ),
-          );
-        if (existing) {
-          const pool = await getBinderPool(tx, input.companyId);
-          // Invarian: entri ledger yang tercatat menyiratkan baris pool ada.
-          if (!pool) throw notFound("Binder pool not found");
-          return { pool, ledgerEntry: existing, envelope: null, charged: false };
-        }
-      }
-      const pool = await getBinderPool(tx, input.companyId);
-      if (!pool) {
-        throw conflict("Pool company belum dibuat — top-up pertama (atas approval owner) diperlukan sebelum pemakaian");
-      }
-      const balanceUnits = centsToUnits(pool.balanceCents);
-      if (balanceUnits < amountUnits) {
-        throw conflict("Pool company habis — hard stop di nol; top-up diperlukan sebelum pemakaian lanjut");
-      }
-      let envelope: BinderBidEnvelope | null = null;
-      if (input.kind === "usage" && input.issueId) {
-        envelope = await getLiveBidEnvelope(tx, input.companyId, input.issueId);
-        if (envelope) {
-          if (envelope.status === "proposed") {
-            throw conflict("Amplop tugas belum disetujui owner — pemakaian ditolak");
-          }
-          if (envelope.status !== "approved" && envelope.status !== "active") {
-            throw conflict(`Amplop tugas berstatus ${envelope.status} — pemakaian ditolak, eskalasi diperlukan`);
-          }
-          const spentUnits = centsToUnits(envelope.spentCents);
-          const amountCentsUnits = centsToUnits(envelope.amountCents);
-          if (spentUnits + amountUnits > amountCentsUnits) {
-            throw conflict(
-              "Amplop tugas tidak muat — eskalasi diperlukan (pecah tugas / naikkan amplop / kurangi scope)",
-            );
-          }
-        }
-      }
-      const newBalance = balanceUnits - amountUnits;
-      const [updatedPool] = await tx
-        .update(binderPools)
-        .set({ balanceCents: unitsToCents(newBalance), updatedAt: new Date() })
-        .where(eq(binderPools.id, pool.id))
-        .returning();
-      let updatedEnvelope: BinderBidEnvelope | null = null;
-      if (envelope) {
-        const spentUnits = centsToUnits(envelope.spentCents) + amountUnits;
-        const amountCentsUnits = centsToUnits(envelope.amountCents);
-        const status = spentUnits >= amountCentsUnits ? "exhausted" : "active";
-        const [row] = await tx
-          .update(binderBidEnvelopes)
-          .set({ spentCents: unitsToCents(spentUnits), status, updatedAt: new Date() })
-          .where(eq(binderBidEnvelopes.id, envelope.id))
-          .returning();
-        updatedEnvelope = row;
-        const remainingUnits = amountCentsUnits - spentUnits;
-        const level = warnLevelFor(remainingUnits, amountCentsUnits);
-        if (level > envelope.warnLevelNotified) {
-          await tx
-            .update(binderBidEnvelopes)
-            .set({ warnLevelNotified: level })
-            .where(eq(binderBidEnvelopes.id, envelope.id));
-          await noteEnvelopeWarning(tx, publications, { ...row, warnLevelNotified: level }, level);
-        }
-      }
-      const ledgerEntry = await insertLedgerEntry(tx, {
-        companyId: input.companyId,
-        projectId: input.projectId,
-        issueId: input.issueId ?? null,
-        poolId: pool.id,
-        envelopeId: updatedEnvelope?.id ?? envelope?.id ?? null,
-        kind: input.kind,
-        direction: "debit",
-        isMemo: false,
-        amountCents: unitsToCents(amountUnits),
-        reason: input.reason,
-        idempotencyKey: input.idempotencyKey ?? null,
-        relatedCostEventId: input.costEventId ?? null,
-        createdByUserId: input.createdByUserId ?? null,
-        createdByAgentId: input.createdByAgentId ?? null,
-      });
-      const poolLevel = warnLevelFor(newBalance, BigInt(pool.monthlyTopUpCents) * 10_000_000n);
-      if (poolLevel > pool.warnLevelNotified) {
-        const [warnedPool] = await tx
-          .update(binderPools)
-          .set({ warnLevelNotified: poolLevel })
-          .where(eq(binderPools.id, pool.id))
-          .returning();
-        await notePoolWarning(tx, publications, warnedPool, poolLevel);
-        return { pool: warnedPool, ledgerEntry, envelope: updatedEnvelope, charged: true };
-      }
-      return { pool: updatedPool, ledgerEntry, envelope: updatedEnvelope, charged: true };
-    }),
+    withOperationAccountingTransaction(db, input.companyId, async (tx, publications) =>
+      chargeBinderUsageInTransaction(tx, publications, input),
+    ),
   );
 }
 

@@ -74,6 +74,35 @@ export {
 } from "./binder-funding.js";
 
 export {
+  binderAgentModelSchema,
+  binderCreateTaskSchema,
+  binderTransitionTaskSchema,
+  binderSubmitWorkSchema,
+  binderRegisterQcReviewerSchema,
+  binderSubmitQcScoreSchema,
+  binderApproveTaskSchema,
+  binderRejectTaskSchema,
+  binderResolveEscalationSchema,
+  binderRequestApprovedActionSchema,
+  binderIssueApprovedActionSchema,
+  binderApprovedActionIdSchema,
+  binderRevokeApprovedActionSchema,
+  type BinderAgentModelInput,
+  type BinderCreateTask,
+  type BinderTransitionTask,
+  type BinderSubmitWork,
+  type BinderRegisterQcReviewer,
+  type BinderSubmitQcScore,
+  type BinderApproveTask,
+  type BinderRejectTask,
+  type BinderResolveEscalation,
+  type BinderRequestApprovedAction,
+  type BinderIssueApprovedAction,
+  type BinderApprovedActionId,
+  type BinderRevokeApprovedAction,
+} from "./binder-task-flow.js";
+
+export {
   createSmokeRunSchema,
   updateSmokeRunSchema,
   recordSmokeRunStepSchema,

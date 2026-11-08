@@ -1,0 +1,2 @@
+ALTER TABLE "binder_qc_assignments" DROP CONSTRAINT "binder_qc_assignments_round_check";--> statement-breakpoint
+ALTER TABLE "binder_qc_assignments" ADD CONSTRAINT "binder_qc_assignments_round_check" CHECK ("binder_qc_assignments"."round" >= 1);
