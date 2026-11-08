@@ -479,35 +479,45 @@ export async function submitWorkForReview(db: Db, input: BinderSubmitWork) {
 /**
  * Daftarkan / perbarui model agen (upsert per company+agent). Family inilah
  * yang dipakai aturan QC beda family (P0-1).
+ *
+ * Varian dalam-transaksi: pemanggil (mis. `registerCeo`) sudah memegang
+ * transaksi + kunci admission (`lockBudgetAdmissionControls`) — upsert di
+ * sini memakai transaksi pemanggil supaya registrasi agen + modelnya
+ * atomik; TIDAK membuka transaksi sendiri (transaksi bersarang di
+ * `withOperationAccountingTransaction` akan deadlock pada kunci yang sama).
  */
-export async function registerAgentModel(db: Db, input: BinderAgentModelInput) {
-  return withOperationAccountingTransaction(db, input.companyId, async (tx) => {
-    await lockBudgetAdmissionControls(tx, input.companyId);
-    const [agent] = await tx
-      .select({ id: agents.id })
-      .from(agents)
-      .where(and(eq(agents.id, input.agentId), eq(agents.companyId, input.companyId)));
-    if (!agent) throw notFound("Agent not found");
-    const [row] = await tx
-      .insert(binderAgentModels)
-      .values({
-        companyId: input.companyId,
-        agentId: input.agentId,
+export async function registerAgentModelInTransaction(tx: Db, input: BinderAgentModelInput) {
+  const [agent] = await tx
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.id, input.agentId), eq(agents.companyId, input.companyId)));
+  if (!agent) throw notFound("Agent not found");
+  const [row] = await tx
+    .insert(binderAgentModels)
+    .values({
+      companyId: input.companyId,
+      agentId: input.agentId,
+      modelFamily: input.modelFamily,
+      modelId: input.modelId,
+      provider: input.provider ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [binderAgentModels.companyId, binderAgentModels.agentId],
+      set: {
         modelFamily: input.modelFamily,
         modelId: input.modelId,
         provider: input.provider ?? null,
-      })
-      .onConflictDoUpdate({
-        target: [binderAgentModels.companyId, binderAgentModels.agentId],
-        set: {
-          modelFamily: input.modelFamily,
-          modelId: input.modelId,
-          provider: input.provider ?? null,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return row;
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return row;
+}
+
+export async function registerAgentModel(db: Db, input: BinderAgentModelInput) {
+  return withOperationAccountingTransaction(db, input.companyId, async (tx) => {
+    await lockBudgetAdmissionControls(tx, input.companyId);
+    return registerAgentModelInTransaction(tx, input);
   });
 }
 

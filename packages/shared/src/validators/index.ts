@@ -103,6 +103,22 @@ export {
 } from "./binder-task-flow.js";
 
 export {
+  binderConnectorMatrixSchema,
+  binderApiKeyRefSchema,
+  binderCeoModelSchema,
+  binderRegisterCeoSchema,
+  binderUpdateCeoBudgetSchema,
+  binderUpdateCeoMatrixSchema,
+  binderUpdateCeoModelSchema,
+  type BinderConnectorMatrix,
+  type BinderCeoModel,
+  type BinderRegisterCeo,
+  type BinderUpdateCeoBudget,
+  type BinderUpdateCeoMatrix,
+  type BinderUpdateCeoModel,
+} from "./binder-ceo.js";
+
+export {
   createSmokeRunSchema,
   updateSmokeRunSchema,
   recordSmokeRunStepSchema,

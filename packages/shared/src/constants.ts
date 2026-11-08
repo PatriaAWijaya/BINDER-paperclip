@@ -1062,6 +1062,105 @@ export type BinderApprovedActionKind = (typeof BINDER_APPROVED_ACTION_KINDS)[num
  */
 export const BINDER_QC_REVIEW_COST_CENTS = 100;
 
+/**
+ * BINDER CEO Edison (PRD Bab 7; rencana Tahap 3 Fase 3.4, poin 5).
+ * Satu owner, satu CEO untuk seluruh akun — CEO melayani semua company,
+ * bukan satu CEO per company. Nama default CEO: Edison.
+ * Model utama default Meta Muse Spark 1.3 via opencode_local → fallback
+ * default Claude via claude_local (diputuskan Patria 7 Nov 2026 09:39 WIB).
+ * Gemini + Codex NONAKTIF di konfigurasi aktif (bisa didaftarkan kembali
+ * lewat Profil Model bila Patria memutuskan).
+ *
+ * KONFIGURASI BISA DIGANTI, BUKAN HARDCODE (DIPUTUSKAN Patria 8 Nov 2026
+ * 07:22 WIB, syarat kebergunaan aplikasi; PRD v1.44 Bab 7): provider /
+ * model / kunci-sebagai-referensi disimpan sebagai data konfigurasi dan
+ * diganti lewat `registerCeo` / `updateCeoModel` — ganti model = ganti
+ * konfigurasi, bukan ganti kode (pergantian tetap hanya di checkpoint).
+ * Nilai di bawah ini adalah DEFAULT, bukan nilai yang dikunci di kode.
+ * Kunci API TIDAK PERNAH disimpan sebagai nilai — hanya referensi env
+ * pola `{env:NAMA_VAR}` (pola konfigurasi OpenCode); nilai kunci milik
+ * user perorangan, dipasang user sendiri, tidak tercatat di log/artefak.
+ * Runtime default sandbox; desktop hanya untuk verifikasi visual
+ * strategi bila perlu. Budget token usulan $20/bulan — pagu owner, bisa
+ * diubah kapan pun (PRD Bab 14).
+ * Model id OpenCode memakai format provider/model ('meta/muse-spark-1.3'
+ * — terbukti live Tahap 1 di MacBook via OpenCode).
+ */
+export const BINDER_CEO_NAME = "Edison";
+export const BINDER_CEO_ROLE = "ceo";
+export const BINDER_CEO_TITLE = "CEO/Orchestrator";
+/** Adapter Paperclip untuk model utama CEO (Meta via OpenCode). */
+export const BINDER_CEO_PRIMARY_ADAPTER_TYPE = "opencode_local";
+export const BINDER_CEO_PRIMARY_MODEL_FAMILY = "meta" as const;
+export const BINDER_CEO_PRIMARY_MODEL_ID = "muse-spark-1.3";
+export const BINDER_CEO_PRIMARY_MODEL_OPENCODE = "meta/muse-spark-1.3";
+/** Referensi kunci provider utama — placeholder env, BUKAN nilai kunci. */
+export const BINDER_CEO_PRIMARY_API_KEY_REF = "{env:META_API_KEY}";
+/** Adapter Paperclip untuk fallback CEO (Claude). */
+export const BINDER_CEO_FALLBACK_ADAPTER_TYPE = "claude_local";
+export const BINDER_CEO_FALLBACK_MODEL_FAMILY = "anthropic" as const;
+export const BINDER_CEO_FALLBACK_MODEL_ID = "claude-sonnet-5-5";
+/** Referensi kunci provider fallback — placeholder env, BUKAN nilai kunci. */
+export const BINDER_CEO_FALLBACK_API_KEY_REF = "{env:ANTHROPIC_API_KEY}";
+/** Runtime default CEO: sandbox (OpenSandbox; PRD Bab 6.2). */
+export const BINDER_CEO_RUNTIME_DEFAULT = "sandbox";
+/** Budget token usulan CEO: $20/bulan (dalam sen). */
+export const BINDER_CEO_BUDGET_MONTHLY_CENTS = 2000;
+
+/**
+ * Matriks konektor CEO (Rencana Tahap 3 poin 5): Allowed HANYA untuk baca
+ * yang aman; Ask first untuk semua tulis dan aksi destruktif; Off untuk
+ * yang tidak dibutuhkan — TANPA konektor kirim eksternal.
+ * Kelas konektor adalah kosakata kebijakan BINDER menurut KEMAMPUAN
+ * (bukan nama produk Paperclip), supaya matriks tetap berlaku apa pun
+ * katalog konektor saat itu; pemetaan ke konektor konkret Paperclip
+ * ditegakkan Gate Internal (Tahap 5).
+ */
+export const BINDER_CONNECTOR_MODES = ["allowed", "ask_first", "off"] as const;
+export type BinderConnectorMode = (typeof BINDER_CONNECTOR_MODES)[number];
+/** Kelas baca — satu-satunya yang boleh 'allowed'. */
+export const BINDER_CONNECTOR_READ_CLASSES = [
+  "workspace_read",
+  "docs_read",
+  "web_read",
+] as const;
+/** Kelas tulis/destruktif — 'ask_first' atau 'off', TIDAK BOLEH 'allowed'. */
+export const BINDER_CONNECTOR_WRITE_CLASSES = [
+  "workspace_write",
+  "docs_write",
+  "command_run",
+  "destructive",
+] as const;
+/** Kelas kirim eksternal — WAJIB 'off' (CEO tanpa konektor kirim eksternal). */
+export const BINDER_CONNECTOR_SEND_CLASSES = [
+  "email_send",
+  "external_message",
+  "external_post",
+  "outreach_send",
+  "external_call",
+] as const;
+export const BINDER_CONNECTOR_CLASSES = [
+  ...BINDER_CONNECTOR_READ_CLASSES,
+  ...BINDER_CONNECTOR_WRITE_CLASSES,
+  ...BINDER_CONNECTOR_SEND_CLASSES,
+] as const;
+export type BinderConnectorClass = (typeof BINDER_CONNECTOR_CLASSES)[number];
+/** Matriks default CEO Edison (PRD Bab 7; Rencana Tahap 3 poin 5). */
+export const BINDER_CEO_CONNECTOR_MATRIX: Record<BinderConnectorClass, BinderConnectorMode> = {
+  workspace_read: "allowed",
+  docs_read: "allowed",
+  web_read: "allowed",
+  workspace_write: "ask_first",
+  docs_write: "ask_first",
+  command_run: "ask_first",
+  destructive: "ask_first",
+  email_send: "off",
+  external_message: "off",
+  external_post: "off",
+  outreach_send: "off",
+  external_call: "off",
+};
+
 export const HEARTBEAT_INVOCATION_SOURCES = [
   "timer",
   "assignment",
