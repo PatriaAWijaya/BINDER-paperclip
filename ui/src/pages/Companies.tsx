@@ -30,6 +30,7 @@ import {
   CircleDot,
   DollarSign,
   Calendar,
+  Archive,
   ArchiveRestore,
 } from "lucide-react";
 
@@ -58,6 +59,7 @@ export function Companies() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeepCleanId, setConfirmDeepCleanId] = useState<string | null>(null);
 
   const editMutation = useMutation({
     mutationFn: ({ id, newName }: { id: string; newName: string }) =>
@@ -70,6 +72,20 @@ export function Companies() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => companiesApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+      setConfirmDeleteId(null);
+      setConfirmDeepCleanId(null);
+    },
+  });
+
+  // "Archive only the name": the organization leaves the active list, but
+  // every agent, skill and task stays intact in the archive until the user
+  // decides to deep clean. This reuses the existing archive endpoint — it
+  // never deletes anything.
+  const archiveMutation = useMutation({
+    mutationFn: (id: string) => companiesApi.archive(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
@@ -132,6 +148,7 @@ export function Companies() {
           const selected = company.id === selectedCompanyId;
           const isEditing = editingId === company.id;
           const isConfirmingDelete = confirmDeleteId === company.id;
+          const isConfirmingDeepClean = confirmDeepCleanId === company.id;
           const companyStats = stats?.[company.id];
           const agentCount = companyStats?.agentCount ?? 0;
           const issueCount = companyStats?.issueCount ?? 0;
@@ -252,13 +269,23 @@ export function Companies() {
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => setConfirmDeleteId(company.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete Organization
-                      </DropdownMenuItem>
+                      {company.status === "archived" ? (
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setConfirmDeepCleanId(company.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Deep clean
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setConfirmDeleteId(company.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete Organization
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -293,20 +320,84 @@ export function Companies() {
                 </div>
               </div>
 
-              {/* Delete confirmation */}
+              {/* Removal choice: archive only the name, or deep clean */}
               {isConfirmingDelete && (
+                <div
+                  className="mt-4 bg-destructive/5 border border-destructive/20 rounded-md px-4 py-3 space-y-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="text-sm font-medium">
+                    How should this organization be removed?
+                  </p>
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">
+                          Archive only the name.
+                        </span>{" "}
+                        The organization leaves the active list, but all of its
+                        data — agents, skills, tasks — stays intact in the
+                        archive until you decide to deep clean. You can restore
+                        it later.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => archiveMutation.mutate(company.id)}
+                        disabled={archiveMutation.isPending || deleteMutation.isPending}
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        {archiveMutation.isPending ? "Archiving…" : "Archive only the name"}
+                      </Button>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium text-destructive">
+                          Deep clean — delete permanently.
+                        </span>{" "}
+                        The organization and all of its data are deleted. This
+                        cannot be undone.
+                      </p>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => deleteMutation.mutate(company.id)}
+                        disabled={archiveMutation.isPending || deleteMutation.isPending}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {deleteMutation.isPending ? "Deleting…" : "Deep clean"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setConfirmDeleteId(null)}
+                      disabled={archiveMutation.isPending || deleteMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Deep clean confirmation for an already-archived organization */}
+              {isConfirmingDeepClean && (
                 <div
                   className="mt-4 flex items-center justify-between bg-destructive/5 border border-destructive/20 rounded-md px-4 py-3"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <p className="text-sm text-destructive font-medium">
-                    Delete this organization and all its data? This cannot be undone.
+                    Deep clean this archived organization and all its data? This cannot be undone.
                   </p>
                   <div className="flex items-center gap-2 ml-4 shrink-0">
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setConfirmDeleteId(null)}
+                      onClick={() => setConfirmDeepCleanId(null)}
                       disabled={deleteMutation.isPending}
                     >
                       Cancel
@@ -317,7 +408,7 @@ export function Companies() {
                       onClick={() => deleteMutation.mutate(company.id)}
                       disabled={deleteMutation.isPending}
                     >
-                      {deleteMutation.isPending ? "Deleting…" : "Delete"}
+                      {deleteMutation.isPending ? "Deleting…" : "Deep clean"}
                     </Button>
                   </div>
                 </div>
