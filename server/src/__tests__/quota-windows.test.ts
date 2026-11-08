@@ -20,7 +20,7 @@ import {
   fetchCodexQuota,
   mapCodexRpcQuota,
   codexHomeDir,
-} from "@paperclipai/adapter-codex-local/server";
+} from "../services/codex-quota.js";
 
 // ---------------------------------------------------------------------------
 // toPercent

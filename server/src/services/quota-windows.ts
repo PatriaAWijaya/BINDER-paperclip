@@ -5,7 +5,7 @@ import { logger } from "../middleware/logger.js";
 import { createHash } from "node:crypto";
 import { eq, inArray, and } from "drizzle-orm";
 import { companySecrets, companySecretVersions, userSecretDefinitions, type Db } from "@paperclipai/db";
-import { fetchCodexQuota } from "@paperclipai/adapter-codex-local/server";
+import { fetchCodexQuota } from "./codex-quota.js";
 import { fetchClaudeQuota } from "@paperclipai/adapter-claude-local/server";
 import { aiConnectionService } from "./ai-connections.js";
 import { trackIdleWork } from "./task-admission.js";
@@ -140,8 +140,6 @@ function providerSlugForAdapterType(type: string): string {
   switch (type) {
     case "claude_local":
       return "anthropic";
-    case "codex_local":
-      return "openai";
     default:
       return type;
   }

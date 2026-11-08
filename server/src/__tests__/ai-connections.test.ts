@@ -26,14 +26,15 @@ import { readAiConnectionConfigurationFailure } from "../services/ai-connection-
 import { aiConnectionService } from "../services/ai-connections.js";
 import { DELIVERY_QUEUES, subscribeDeliveryWork } from "../services/delivery-work-notifications.js";
 import { syncConnectionCredentialBindings } from "../services/connection-credential-bindings.js";
-import * as codexAdapter from "@paperclipai/adapter-codex-local/server";
+import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
+import * as accountHomeSecretMutationLock from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
+import * as codexAuthMergeDecision from "../services/native-runtime/codex-auth-merge-decision.js";
 import { WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE } from "@paperclipai/adapter-utils/workspace-restore-merge";
 import * as executionTarget from "@paperclipai/adapter-utils/execution-target";
 import * as runnerProbe from "../vendor/paperclip-runner/index.js";
 import * as nativeCodexRunner from "../services/native-runtime/native-codex-runner.js";
 import { testNativeRunnerAuthentication } from "../services/native-runtime/setup-readiness.js";
 import { prepareManagedAiRuntime, withManagedAiProbe, assertManagedAiProjectAuth, isAiConnectionBusy, isAiConnectionIncompatible, managedAiSessionFingerprintConfig } from "../services/ai-connection-runtime.js";
-import { execute as executeGemini, testEnvironment as testGeminiEnvironment } from "@paperclipai/adapter-gemini-local/server";
 import { toolAccessService } from "../services/tool-access.js";
 import { secretService } from "../services/secrets.js";
 import { resolveExecutionRunAdapterConfig } from "../services/heartbeat.js";
@@ -115,15 +116,16 @@ describe("managed AI connections", () => {
     const { requireServerAdapter } = await import("../adapters/index.js");
     const { agentEnvironmentTestService } = await import("../services/agent-environment-test.js");
     const native = vi.spyOn(requireServerAdapter("paperclip_runner"), "testEnvironment").mockResolvedValue({ adapterType: "paperclip_runner", status: "pass", testedAt: new Date().toISOString(), checks: [{ code: "acpx_runtime_ready", level: "info", message: "Pinned Pi runtime verified" }] });
-    const legacy = vi.spyOn(requireServerAdapter("pi_local"), "testEnvironment").mockRejectedValue(new Error("Legacy Pi CLI must not be required"));
+    // The legacy pi_local adapter no longer exists (deleted 8 Nov 2026), so
+    // there is no legacy testEnvironment to spy on: the "Legacy Pi CLI must
+    // not be required" guard is now structural — resolving it would throw.
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ data: {} }), { status }));
     try {
       const result = await agentEnvironmentTestService(db).testManagedEnvironment("paperclip_runner", { companyId, adapterType: "paperclip_runner", config: runtime.config }, selected, runtime, agentId);
       expect(result.status).toBe(status === 200 ? "pass" : "fail");
       expect(result.checks).toContainEqual(expect.objectContaining({ code: status === 200 ? "ai_connection_api_key_reverified" : "ai_connection_api_key_rejected" }));
-      expect(legacy).not.toHaveBeenCalled();
       expect(request).toHaveBeenCalled();
-    } finally { native.mockRestore(); legacy.mockRestore(); request.mockRestore(); await runtime.cleanup(); }
+    } finally { native.mockRestore(); request.mockRestore(); await runtime.cleanup(); }
   });
 
   it("defers a new plugin agent's Copilot check until its saved-agent lifecycle can acquire the computer", async () => {
@@ -491,7 +493,7 @@ describe("managed AI connections", () => {
     const input = { companyId, agentId, responsibleUserId: owner, adapterType: "codex_local",
       binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: {} };
     const failure = Object.assign(new Error("injected private lock diagnostic"), { code: kind === "timeout" ? WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE : "EACCES" });
-    const lock = vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock").mockRejectedValueOnce(failure);
+    const lock = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock").mockRejectedValueOnce(failure);
     try {
       expect(await withManagedAiProbe(db, input, probe)).toBe("ok");
       expect(lock).not.toHaveBeenCalled();
@@ -513,7 +515,7 @@ describe("managed AI connections", () => {
     retainAiCredentialCleanup({ scope, retired: retired.promise, cleanup });
     try {
       await expect(service.runtimeCredential(row)).resolves.toBe(auth);
-      await codexAdapter.withAccountHomeSecretMutationLock(undefined, companyId, async () => {
+      await withAccountHomeSecretMutationLock(undefined, companyId, async () => {
         await expect(service.runtimeCredential(row)).resolves.toBe(auth);
       });
       expect(cleanup).not.toHaveBeenCalled();
@@ -535,7 +537,7 @@ describe("managed AI connections", () => {
       binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: {} };
     const stopped = deferredSignal();
     const provider = vi.fn(async runtime => readFile(path.join(String(runtime.config.env.CODEX_HOME), "auth.json"), "utf8"));
-    const merge = vi.spyOn(codexAdapter, "decideCodexAuthMerge").mockRejectedValue(new Error("fixture cleanup storage unavailable"));
+    const merge = vi.spyOn(codexAuthMergeDecision, "decideCodexAuthMerge").mockRejectedValue(new Error("fixture cleanup storage unavailable"));
     let retained: Awaited<ReturnType<typeof prepareManagedAiRuntime>> | undefined;
     try {
       await expect(withManagedAiProbe(db, input, async runtime => {
@@ -576,7 +578,7 @@ describe("managed AI connections", () => {
     let lock: ReturnType<typeof vi.spyOn> | undefined;
     try {
       await entered.promise;
-      lock = vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock");
+      lock = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock");
       // Start outside the probe's async scope; it is a separate HTTP request.
       refreshing = service.refreshQuotaCredential(row, auth("10"), new AbortController().signal);
       const refreshed = await refreshing;
@@ -817,7 +819,7 @@ describe("managed AI connections", () => {
     const prepare = () => prepareManagedAiRuntime(db, { companyId, agentId, responsibleUserId: owner, adapterType: "codex_local",
       binding: { provider: "openai", method: "subscription", mode: "responsible_user" }, config: {} });
     const held = deferredSignal(), release = deferredSignal();
-    const lock = kind === "company_file" ? vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock")
+    const lock = kind === "company_file" ? vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock")
       .mockRejectedValueOnce(Object.assign(new Error("company lock held by another account"), { code: WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE })) : undefined;
     const holding = kind === "company_file" ? Promise.resolve() : db.transaction(async tx => {
       if (kind === "grant_row") await tx.select().from(connectionGrants).where(eq(connectionGrants.id, row.grant.id)).for("update");
@@ -1139,7 +1141,7 @@ describe("managed AI connections", () => {
       await writeFile(authFile, auth(runOwner, "replacement"));
       // Inject the two 30-second acquisition expirations, then use the real
       // still-held lock and real Postgres write-back for the final attempt.
-      lock = vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock")
+      lock = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock")
         .mockRejectedValueOnce(Object.assign(new Error("lock timeout"), { code: WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE }))
         .mockRejectedValueOnce(Object.assign(new Error("lock timeout"), { code: WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE }));
       cleaning = run.cleanup();
@@ -1177,7 +1179,7 @@ describe("managed AI connections", () => {
       await started.promise;
       // Represent two expired 30-second acquisitions, then wait on the real
       // held lock. The credential must survive until that final save commits.
-      lock = vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock")
+      lock = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock")
         .mockRejectedValueOnce(Object.assign(new Error("lock timeout"), { code: WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE }))
         .mockRejectedValueOnce(Object.assign(new Error("lock timeout"), { code: WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE }));
       saving = service.save(companyId, loginOwner, { ...intent, agentIds: [] }, credential, { id: sessionId });
@@ -1241,7 +1243,7 @@ describe("managed AI connections", () => {
     const authFile = path.join(String(run.config.env.CODEX_HOME), "auth.json");
     await writeFile(authFile, auth("11"));
     const injected = failure === "lock"
-      ? vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock").mockRejectedValue(Object.assign(new Error("lock timeout"), { code: WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE }))
+      ? vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock").mockRejectedValue(Object.assign(new Error("lock timeout"), { code: WORKSPACE_RESTORE_LOCK_TIMEOUT_CODE }))
       : vi.spyOn(db, "transaction").mockRejectedValue(new Error("database unavailable"));
     try {
       await expect(run.cleanup()).rejects.toThrow(failure === "lock" ? "lock timeout" : "database unavailable");
@@ -1272,7 +1274,7 @@ describe("managed AI connections", () => {
     const refreshing = service.refreshQuotaCredential(row, original, new AbortController().signal);
     try {
       await exchangeStarted.promise;
-      lock = vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock");
+      lock = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock");
       const preparing = prepareManagedAiRuntime(db, { companyId, agentId, responsibleUserId: owner, adapterType: "codex_local", binding: { provider: "openai", method: "subscription", mode: "responsible_user" }, config: {} });
       let prepared = false;
       void preparing.then(() => { prepared = true; });
@@ -1423,53 +1425,11 @@ describe("managed AI connections", () => {
     await expect(access(reopened.home!)).rejects.toThrow();
   });
 
-  it("authenticates local Gemini probes and runs with the saved key in an isolated home", async () => {
-    const root = await mkdtemp(path.join(home, "gemini-auth-"));
-    const command = path.join(root, "gemini");
-    await writeFile(command, `#!/usr/bin/env node
-const fs = require("node:fs");
-const path = require("node:path");
-const settings = JSON.parse(fs.readFileSync(path.join(process.env.HOME, ".gemini/settings.json"), "utf8"));
-if (settings.selectedAuthType !== "gemini-api-key" || settings.security?.auth?.selectedType !== "gemini-api-key" || process.env.GEMINI_API_KEY !== "saved-google-key") {
-  console.error("Invalid auth method selected");
-  process.exit(1);
-}
-console.log(JSON.stringify({ type: "system", subtype: "init", session_id: "gemini-managed" }));
-console.log(JSON.stringify({ type: "assistant", message: { content: [{ type: "output_text", text: "hello" }] } }));
-console.log(JSON.stringify({ type: "result", subtype: "success", result: "hello", session_id: "gemini-managed" }));
-`, { mode: 0o700 });
-    const saved = await service.save(companyId, "alice", {
-      provider: "google", method: "api_key", ownership: "personal", name: "Saved Google",
-      apiKey: "fixture", allAgents: true, agentIds: [],
-    }, "saved-google-key");
-    const runtime = await prepareManagedAiRuntime(db, {
-      companyId, agentId, responsibleUserId: "alice", adapterType: "gemini_local",
-      binding: { provider: "google", method: "api_key", mode: "responsible_user" },
-      config: { engine: "cli", command, cwd: root, promptTemplate: "Say hello.", paperclipRuntimeSkills: [], env: { GEMINI_API_KEY: "ambient-google-key" } },
-    });
-    try {
-      expect(runtime.attribution.grantId).toBe(saved.grantId);
-      expect(runtime.home).not.toBe(os.homedir());
-      const settingsFile = path.join(runtime.home!, ".gemini/settings.json");
-      expect(await readFile(settingsFile, "utf8")).not.toContain("saved-google-key");
-      expect((await stat(settingsFile)).mode & 0o777).toBe(0o600);
-      const probe = await testGeminiEnvironment({ companyId, adapterType: "gemini_local", config: runtime.config });
-      expect(probe.status).toBe("pass");
-      expect(probe.checks).toContainEqual(expect.objectContaining({ code: "gemini_hello_probe_passed" }));
-      const result = await executeGemini({
-        runId: randomUUID(),
-        agent: { id: agentId, companyId, name: "Gemini", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
-        runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
-        config: runtime.config, context: {}, onLog: async () => {},
-      });
-      expect(result.exitCode).toBe(0);
-      expect(result.sessionId).toBe("gemini-managed");
-    } finally {
-      await runtime.cleanup();
-      await rm(root, { recursive: true, force: true });
-    }
-    await expect(access(runtime.home!)).rejects.toThrow();
-  });
+  // The "authenticates local Gemini probes and runs with the saved key in an
+  // isolated home" test lived here. It drove the gemini adapter's execute +
+  // testEnvironment directly; both died with the gemini adapter. The
+  // Google-provider credential plumbing it also exercised is covered by the
+  // migration test below. Deleted with the adapter deletion, 8 Nov 2026.
 
   it("preserves Google and Copilot account defaults when the current provider constraint migration is reapplied", async () => {
     const saved = await service.save(companyId, "bob", {
@@ -1490,8 +1450,11 @@ console.log(JSON.stringify({ type: "result", subtype: "success", result: "hello"
         }
       });
     }
+    // gemini_local died with its adapter (8 Nov 2026); Google's api_key
+    // capability now lists only pi_local + antigravity_runtime, so the
+    // Google-default select drives the kept antigravity_runtime harness.
     const selected = await service.select({
-      companyId, agentId, userId: "bob", adapterType: "gemini_local",
+      companyId, agentId, userId: "bob", adapterType: "antigravity_runtime",
       binding: { provider: "google", method: "api_key", mode: "responsible_user" },
     });
     expect(selected.grant.id).toBe(saved.grantId);

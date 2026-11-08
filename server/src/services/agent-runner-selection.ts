@@ -3,7 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { agentHarnessType, paperclipRunnerProfileForHarness, isEnvironmentDriverSupportedForAdapter, paperclipRunnerSupportsPlatform, type AgentRunnerChoice, type AgentRunnerAvailability } from "@paperclipai/shared";
 import { normalizeLegacyRunnerProvider, PAPERCLIP_RUNNER_DEFAULT_MODELS } from "@paperclipai/adapter-utils";
 import { resolveClaudeModel } from "@paperclipai/adapter-claude-local";
-import { DEFAULT_GROK_LOCAL_MODEL } from "@paperclipai/adapter-grok-local";
+import { DEFAULT_GROK_LOCAL_MODEL } from "@paperclipai/shared/grok-cli-models";
 import { findActiveServerAdapter, hasActiveAdapterOverride, waitForExternalAdapters } from "../adapters/registry.js";
 import { getDisabledAdapterTypes } from "./adapter-plugin-store.js";
 import { adapterSettingsService, effectiveDisabledAdapterTypes } from "./adapter-settings.js";
@@ -198,44 +198,6 @@ function resolveAgentRunner(input: AgentRunnerSelection): { adapterType: string;
   const choice = input.runner ?? "auto";
   const useNative = choice === "paperclip" || (choice === "auto" && harness !== "cursor_cloud" && availability.defaultRunner === "paperclip");
   if (!useNative) {
-    if (harness === "cursor_cloud") {
-      if (!native) {
-        if (choice !== "legacy" && !availability.supportedRunners.includes("legacy")) throw unprocessable(
-          "Automatic Cursor selection is unavailable for this environment. Choose a supported runner in Advanced.",
-          { code: "agent_runner_unavailable" },
-        );
-        return { adapterType, adapterConfig: config };
-      }
-      if (config.lifecycleMode !== undefined && config.lifecycleMode !== "per_turn") incompatible(["lifecycleMode"]);
-      for (const [current, legacy] of [["cloudEnvType", "runtimeEnvType"], ["cloudEnvName", "runtimeEnvName"], ["repoRef", "repoStartingRef"], ["prUrl", "repoPullRequestUrl"]]) {
-        if (config[current] !== undefined) config[legacy] = config[current];
-        delete config[current];
-      }
-      if (config.cursorCloudTimeoutMs !== undefined) incompatible(["cursorCloudTimeoutMs"]);
-      for (const key of ["provider", "lifecycleMode", "idleTimeoutMs"]) delete config[key];
-      return { adapterType: "cursor_cloud", adapterConfig: config };
-    }
-    if (harness === "grok_local") {
-      if (!native) return { adapterType, adapterConfig: config };
-      if (config.acpxPermissionMode !== undefined && config.acpxPermissionMode !== "approve-all") incompatible(["acpxPermissionMode"]);
-      if (config.lifecycleMode !== undefined && config.lifecycleMode !== "per_turn") incompatible(["lifecycleMode"]);
-      const effort = config.modelReasoningEffort ?? config.reasoningEffort ?? config.effort;
-      for (const key of ["provider", "acpxAgent", "acpxPermissionMode", "lifecycleMode", "idleTimeoutMs", "modelReasoningEffort", "effort"]) delete config[key];
-      return { adapterType: "grok_local", adapterConfig: { ...config, disableWebSearch: config.disableWebSearch ?? false, ...(effort === undefined ? {} : { reasoningEffort: effort }) } };
-    }
-    if (harness === "pi_local") {
-      if (!native) return { adapterType, adapterConfig: config };
-      const thinking = config.thinking ?? config.piThinkingLevel ?? "low";
-      const unsupported = [
-        ...(config.acpxPermissionMode !== undefined && config.acpxPermissionMode !== "approve-all" ? ["acpxPermissionMode"] : []),
-        ...(config.lifecycleMode !== undefined && config.lifecycleMode !== "per_turn" ? ["lifecycleMode"] : []),
-        ...(config.acpxSessionMode !== undefined ? ["acpxSessionMode"] : []),
-        ...(!["off", "minimal", "low", "medium", "high", "xhigh"].includes(String(thinking)) ? [config.thinking !== undefined ? "thinking" : "piThinkingLevel"] : []),
-      ];
-      if (unsupported.length) throw unprocessable(`Legacy Pi cannot honor these settings: ${unsupported.join(", ")}. Keep Paperclip Runner or explicitly choose compatible settings.`, { code: "agent_runner_config_incompatible", fields: unsupported });
-      for (const key of ["provider", "acpxAgent", "acpxPermissionMode", "acpxSessionMode", "piThinkingLevel", "lifecycleMode", "idleTimeoutMs"]) delete config[key];
-      return { adapterType: "pi_local", adapterConfig: { ...config, thinking } };
-    }
     if (harness === "opencode_local") {
       if (!native) return { adapterType, adapterConfig: config };
       if (config.opencodePermissionMode !== undefined && config.opencodePermissionMode !== "allow") incompatible(["opencodePermissionMode"]);
@@ -252,13 +214,9 @@ function resolveAgentRunner(input: AgentRunnerSelection): { adapterType: string;
       if (effort !== undefined) config.effort = effort;
       return { adapterType: "claude_local", adapterConfig: { ...config, dangerouslySkipPermissions: config.dangerouslySkipPermissions ?? true } };
     }
-    if (!native && harness !== "codex_local") return { adapterType, adapterConfig: config };
-    if (!native && !["codexPermissionMode", "lifecycleMode", "idleTimeoutMs"].some(key => config[key] !== undefined)) return { adapterType, adapterConfig: config };
-    if (harness !== "codex_local") throw unprocessable("This native harness does not have a runner override in this release.", { code: "agent_runner_unavailable" });
-    if (config.codexPermissionMode !== undefined && config.codexPermissionMode !== "never") incompatible(["codexPermissionMode"]);
-    if (config.lifecycleMode !== undefined && config.lifecycleMode !== "per_turn") incompatible(["lifecycleMode"]);
-    for (const key of ["provider", "codexPermissionMode", "opencodePermissionMode", "acpxPermissionMode", "lifecycleMode", "idleTimeoutMs"]) delete config[key];
-    return { adapterType: "codex_local", adapterConfig: { ...config, dangerouslyBypassApprovalsAndSandbox: config.dangerouslyBypassApprovalsAndSandbox ?? true } };
+    if (["grok_local", "pi_local", "cursor_cloud", "cursor", "gemini_local", "kimi_local", "hermes_local", "hermes_gateway", "openclaw_gateway", "codex_local"].includes(harness)) throw unprocessable(`The ${harness} harness was removed. Choose Paperclip Runner.`, { code: "agent_runner_unavailable" });
+    if (!native) return { adapterType, adapterConfig: config };
+    throw unprocessable("This native harness does not have a runner override in this release.", { code: "agent_runner_unavailable" });
   }
   if (native && harness !== "codex_local" && choice === "paperclip") return { adapterType, adapterConfig: normalizeLegacyRunnerProvider(config) };
   if (!availability.supportedRunners.includes("paperclip")) throw unprocessable(input.target?.driver === "sandbox"

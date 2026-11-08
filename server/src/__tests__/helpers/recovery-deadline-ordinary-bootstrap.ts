@@ -1,4 +1,3 @@
-import { classifyCodexTerminalSessionFailure } from "@paperclipai/adapter-codex-local/server";
 import type { AdapterExecutionResult } from "../../adapters/types.js";
 
 export const controlledOrdinaryBootstrapFailure = {
@@ -12,8 +11,13 @@ export function controlledOrdinaryBootstrapResult(config: Record<string, unknown
   if (config.command !== process.execPath || !Array.isArray(args) || args.length !== 2 || args[0] !== "-e" ||
       args[1] !== controlledOrdinaryBootstrapScript || result.exitCode !== 75 || result.signal !== null || result.timedOut ||
       result.resultJson?.stdout !== "" || result.resultJson?.stderr !== controlledOrdinaryBootstrapProtocol + "\n") return result;
-  const failure = JSON.parse(result.resultJson.stderr) as typeof controlledOrdinaryBootstrapFailure;
-  const classified = classifyCodexTerminalSessionFailure(failure, new Date());
-  if (classified?.errorFamily !== "transient_upstream") return result;
+  // The Codex terminal-failure classifier (classifyCodexTerminalSessionFailure)
+  // died with the codex adapter. This helper only ever sees the one controlled
+  // failure above ("Selected model is at capacity"), which that classifier
+  // always mapped to transient_upstream with no retry time, so the
+  // classification is inlined as a literal. (The stderr was already proven
+  // to equal the controlled protocol by the guard above, so no parse is
+  // needed.)
+  const classified = { errorCode: "codex_transient_upstream", errorFamily: "transient_upstream", retryNotBefore: null } as const;
   return { ...result, ...classified, executionRecovery: { kind: "bootstrap", providerWorkStarted: false } };
 }

@@ -6,7 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import type { agents } from "@paperclipai/db";
-import { sessionCodec as codexSessionCodec } from "@paperclipai/adapter-codex-local/server";
+import { sessionCodec as claudeSessionCodec } from "@paperclipai/adapter-claude-local/server";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 import {
   applyPersistedExecutionWorkspaceConfig,
@@ -77,7 +77,7 @@ function buildWorkspaceValidationInput(
   overrides: Partial<WorkspaceValidationInput> = {},
 ): WorkspaceValidationInput {
   return {
-    adapterType: "codex_local",
+    adapterType: "claude_local",
     agentId: "agent-1",
     issue: {
       id: "issue-1",
@@ -1071,13 +1071,13 @@ describe("assertPushCapabilityCheckoutValid", () => {
 describe("requiresPushCapabilityPreflight", () => {
   it("only enables the guard when the issue explicitly mentions the GitHub PR workflow skill", () => {
     expect(requiresPushCapabilityPreflight({
-      adapterType: "codex_local",
+      adapterType: "claude_local",
       issueId: "issue-1",
       explicitRunScopedSkillKeys: ["paperclipai/bundled/software-development/github-pr-workflow"],
     })).toBe(true);
 
     expect(requiresPushCapabilityPreflight({
-      adapterType: "codex_local",
+      adapterType: "claude_local",
       issueId: "issue-1",
       explicitRunScopedSkillKeys: [],
     })).toBe(false);
@@ -1267,7 +1267,7 @@ describe("resolveWorkspaceAfterLowTrustPreflight", () => {
 });
 
 describe("resolveRuntimeSessionParamsForWorkspace", () => {
-  it("keeps a legacy projectless Codex session in the default agent workspace", () => {
+  it("keeps a legacy projectless session in the default agent workspace", () => {
     const agentId = "agent-projectless-legacy";
     const fallbackCwd = resolveDefaultAgentWorkspaceDir(agentId);
     const previousSessionParams = {
@@ -2242,7 +2242,7 @@ async function buildSessionConfigMetadata(
   overrides: Partial<Parameters<typeof buildEffectiveRunSessionConfigMetadata>[0]> = {},
 ) {
   return buildEffectiveRunSessionConfigMetadata({
-    adapterType: "codex_local",
+    adapterType: "claude_local",
     effectiveAdapterConfig: {
       command: "codex",
       model: "gpt-5.4-mini",
@@ -2857,9 +2857,9 @@ describe("stripPaperclipSessionMetadataFromSessionParams", () => {
 });
 
 describe("isTaskSessionCredentialCompatible", () => {
-  it("retains the server-owned identity even when the Codex codec drops it", () => {
+  it("retains the server-owned identity even when the Claude codec drops it", () => {
     const saved = { sessionId: "thread-1", paperclipAiCredentialIdentity: "grant:user:generation" };
-    const decoded = codexSessionCodec.deserialize(saved);
+    const decoded = claudeSessionCodec.deserialize(saved);
     expect(decoded).toEqual({ sessionId: "thread-1" });
     expect(isTaskSessionCredentialCompatible(saved, "grant:user:generation")).toBe(true);
   });
@@ -2988,7 +2988,7 @@ describe("buildExplicitResumeSessionOverride", () => {
         sessionDisplayId: "session-after",
         lastRunId: "run-1",
       },
-      sessionCodec: codexSessionCodec,
+      sessionCodec: claudeSessionCodec,
     });
 
     expect(result).toEqual({
@@ -3013,7 +3013,7 @@ describe("buildExplicitResumeSessionOverride", () => {
         sessionDisplayId: "other-session",
         lastRunId: "run-2",
       },
-      sessionCodec: codexSessionCodec,
+      sessionCodec: claudeSessionCodec,
     });
 
     expect(result).toEqual({
@@ -3265,8 +3265,8 @@ describe("resolveNextSessionState", () => {
 
   it("keeps non-Hermes arbitrary session ids unchanged", () => {
     const result = resolveNextSessionState({
-      adapterType: "codex_local",
-      codec: codexSessionCodec,
+      adapterType: "claude_local",
+      codec: claudeSessionCodec,
       adapterResult: {
         exitCode: 1,
         signal: null,
@@ -3329,13 +3329,10 @@ describe("prioritizeProjectWorkspaceCandidatesForRun", () => {
 });
 
 describe("parseSessionCompactionPolicy", () => {
-  it("disables Paperclip-managed rotation by default for codex and claude local", () => {
-    expect(parseSessionCompactionPolicy(buildAgent("codex_local"))).toEqual({
-      enabled: true,
-      maxSessionRuns: 0,
-      maxRawInputTokens: 0,
-      maxSessionAgeHours: 0,
-    });
+  // The codex_local case lived here (same all-zeros expectation). Codex is
+  // no longer a sessioned adapter, so it now gets the conservative defaults
+  // asserted in the next test. Deleted with the adapter deletion, 8 Nov 2026.
+  it("disables Paperclip-managed rotation by default for claude local", () => {
     expect(parseSessionCompactionPolicy(buildAgent("claude_local"))).toEqual({
       enabled: true,
       maxSessionRuns: 0,
@@ -3345,8 +3342,15 @@ describe("parseSessionCompactionPolicy", () => {
   });
 
   it("keeps conservative defaults for adapters without confirmed native compaction", () => {
+    // "cursor" is a runner harness name (the ACPX Cursor provider), not an
+    // adapter type: parseSessionCompactionPolicy looks up agent.adapterType,
+    // and no adapter type "cursor" exists, so it resolves through the
+    // unlisted-type fallback (compaction off, conservative caps) after the
+    // harness-only table entry was removed with the adapter deletion,
+    // 8 Nov 2026. opencode_local keeps its table entry (unknown native
+    // management + default policy), so it still resolves enabled.
     expect(parseSessionCompactionPolicy(buildAgent("cursor"))).toEqual({
-      enabled: true,
+      enabled: false,
       maxSessionRuns: 200,
       maxRawInputTokens: 2_000_000,
       maxSessionAgeHours: 72,
@@ -3362,7 +3366,7 @@ describe("parseSessionCompactionPolicy", () => {
   it("lets explicit agent overrides win over adapter defaults", () => {
     expect(
       parseSessionCompactionPolicy(
-        buildAgent("codex_local", {
+        buildAgent("claude_local", {
           heartbeat: {
             sessionCompaction: {
               maxSessionRuns: 25,

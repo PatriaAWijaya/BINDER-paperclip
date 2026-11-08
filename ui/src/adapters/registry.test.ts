@@ -52,24 +52,28 @@ describe("ui adapter registry", () => {
     expect(fallback.ConfigFields).toBe(SchemaConfigFields);
   });
 
-  it("restores built-in Hermes adapters when external overrides are paused or removed", () => {
-    for (const type of ["hermes_local", "hermes_gateway"]) {
+  // The hermes_local/hermes_gateway builtins lived here as the example
+  // types. Those adapters died with the adapter deletion, so the same
+  // override/pause/restore mechanism is now exercised with the kept
+  // builtins. Deleted 8 Nov 2026.
+  it("restores built-in adapters when external overrides are paused or removed", () => {
+    for (const type of ["claude_local", "opencode_local"]) {
       const builtin = getUIAdapter(type);
 
-      syncExternalAdapters([{ type, label: "External Hermes" }]);
+      syncExternalAdapters([{ type, label: "External Adapter" }]);
 
       const overridden = getUIAdapter(type);
       expect(overridden).not.toBe(builtin);
       expect(overridden.type).toBe(type);
-      expect(overridden.label).toBe("External Hermes");
+      expect(overridden.label).toBe("External Adapter");
       expect(overridden.ConfigFields).toBe(builtin.ConfigFields);
       expect(overridden.buildAdapterConfig).toBe(builtin.buildAdapterConfig);
 
-      syncExternalAdapters([{ type, label: "External Hermes", overrideDisabled: true }]);
+      syncExternalAdapters([{ type, label: "External Adapter", overrideDisabled: true }]);
 
       expect(getUIAdapter(type)).toBe(builtin);
 
-      syncExternalAdapters([{ type, label: "External Hermes" }]);
+      syncExternalAdapters([{ type, label: "External Adapter" }]);
       expect(getUIAdapter(type)).not.toBe(builtin);
 
       syncExternalAdapters([]);

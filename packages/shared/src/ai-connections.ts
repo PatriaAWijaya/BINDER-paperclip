@@ -85,7 +85,7 @@ export const AI_CONNECTION_CAPABILITIES: Record<
     methods: { api_key: { adapters: ["copilot_runtime"], envKey: "COPILOT_GITHUB_TOKEN" } },
   },
   google: { name: "Google", methods: {
-    api_key: { adapters: ["gemini_local", "pi_local", "antigravity_runtime"], envKey: "GEMINI_API_KEY" },
+    api_key: { adapters: ["pi_local", "antigravity_runtime"], envKey: "GEMINI_API_KEY" },
     subscription: { adapters: ["antigravity_runtime"], envKey: "GEMINI_HOME" },
   } },
   anthropic: {
@@ -139,7 +139,7 @@ export function isAiConnectionCompatible(
     && ["openrouter", "openai", "anthropic", "google"].includes(requirement.provider)
     && typeof model === "string" && model.startsWith(`${requirement.provider}/`);
   if ("mode" in requirement && requirement.mode !== "responsible_user" && requirement.method === "api_key")
-    return ["claude_local", "codex_local", "opencode_local", "hermes_local", "gemini_local", "grok_local", "copilot_runtime"].includes(adapterType);
+    return ["claude_local", "codex_local", "opencode_local", "grok_local", "copilot_runtime"].includes(adapterType);
   const methods = AI_CONNECTION_CAPABILITIES[requirement.provider].methods;
   const candidates = "mode" in requirement && requirement.mode === "responsible_user"
     ? Object.values(methods)

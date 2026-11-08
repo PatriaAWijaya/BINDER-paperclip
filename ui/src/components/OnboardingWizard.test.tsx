@@ -3,7 +3,7 @@
 import { act, StrictMode } from "react";
 import { ONBOARDING_CONNECTION_TEST_TIMEOUT_MS } from "../lib/onboarding-connection-test";
 import { buildClaudeLocalConfig } from "../../../packages/adapters/claude-local/src/ui/build-config";
-import { buildCodexRunnerConfig } from "../adapters/codex-local/config-fields";
+import { buildCodexRunnerConfig } from "../adapters/paperclip-runner/codex-config-fields";
 import type { CreateConfigValues } from "@paperclipai/adapter-utils";
 import type { LocalAiLoginStatus } from "@paperclipai/shared";
 import { createRoot } from "react-dom/client";

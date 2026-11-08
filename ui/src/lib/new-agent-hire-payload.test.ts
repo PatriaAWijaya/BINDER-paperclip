@@ -2,13 +2,13 @@
 import { describe, expect, it } from "vitest";
 import { buildNewAgentHirePayload } from "./new-agent-hire-payload";
 import { defaultCreateValues } from "../components/agent-config-defaults";
-import { codexLocalUIAdapter } from "../adapters/codex-local";
-import { resolveCodexLocalCliPolicy } from "@paperclipai/adapter-codex-local";
+import { buildCodexRunnerConfig } from "../adapters/paperclip-runner/codex-config-fields";
+import { resolveCodexLocalCliPolicy } from "@paperclipai/shared";
 
 describe("buildNewAgentHirePayload", () => {
   it.each([false, true])("preserves explicit automatic Legacy sandbox choice %s through the actual CLI policy", (bypass) => {
     const values = { ...defaultCreateValues, adapterType: "codex_local", runner: "auto" as const, dangerouslyBypassSandbox: bypass, codexLegacySandboxBypass: bypass };
-    const payload = buildNewAgentHirePayload({ name: "Codex", effectiveRole: "general", configValues: values, adapterConfig: codexLocalUIAdapter.buildAdapterConfig(values) });
+    const payload = buildNewAgentHirePayload({ name: "Codex", effectiveRole: "general", configValues: values, adapterConfig: buildCodexRunnerConfig(values) });
     expect(payload.runner).toBe("auto");
     expect(payload.adapterConfig.dangerouslyBypassApprovalsAndSandbox).toBe(bypass);
     expect(resolveCodexLocalCliPolicy(payload.adapterConfig).bypass).toBe(bypass);
@@ -16,7 +16,7 @@ describe("buildNewAgentHirePayload", () => {
   });
   it.each([undefined, "auto", "paperclip", "legacy"] as const)("keeps runner %s separate from Codex execution settings", (runner) => {
     const values = { ...defaultCreateValues, adapterType: "codex_local", runner, model: "gpt-5.6-sol", thinkingEffort: "high" };
-    const payload = buildNewAgentHirePayload({ name: "Codex", effectiveRole: "general", configValues: values, adapterConfig: codexLocalUIAdapter.buildAdapterConfig(values) });
+    const payload = buildNewAgentHirePayload({ name: "Codex", effectiveRole: "general", configValues: values, adapterConfig: buildCodexRunnerConfig(values) });
     expect(payload.adapterType).toBe("codex_local");
     expect(payload.runner).toBe(runner);
     expect(payload.adapterConfig).toMatchObject({ model: values.model, modelReasoningEffort: "high" });

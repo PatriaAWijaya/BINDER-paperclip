@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { AdapterExecutionResult } from "../adapters/types.js";
-import { classifyCodexTerminalSessionFailure } from "@paperclipai/adapter-codex-local/server";
 import { legacyExecutionNeedsReconciliation } from "../services/legacy-execution-recovery.js";
 import { readTransientRecoveryContractFromRun } from "../services/heartbeat/retries.js";
 import { controlledOrdinaryBootstrapFailure, controlledOrdinaryBootstrapProtocol, controlledOrdinaryBootstrapResult,
@@ -13,11 +12,11 @@ const persisted = (result: AdapterExecutionResult) => ({ runtimeMode: "legacy" a
     ...(result.errorFamily ? { errorFamily: result.errorFamily } : {}),
     ...(result.executionRecovery ? { executionRecovery: result.executionRecovery } : {}) } });
 describe("controlled ordinary retry bootstrap contract", () => {
-  it("uses the production typed service classifier and replay-safe no-action contract", () => {
+  it("uses the inlined transient-upstream classification and replay-safe no-action contract", () => {
     const result = controlledOrdinaryBootstrapResult(config, raw);
-    const classified = classifyCodexTerminalSessionFailure(controlledOrdinaryBootstrapFailure, new Date());
-    expect(classified).not.toBeNull();
-    if (!classified) throw new Error("Controlled service-capacity failure must have a production retry classification");
+    // The production classifier died with the codex adapter; the helper now
+    // inlines the classification the controlled failure always received.
+    const classified = { errorCode: "codex_transient_upstream", errorFamily: "transient_upstream", retryNotBefore: null };
     expect(result).toMatchObject(classified);
     expect(result.executionRecovery).toEqual({ kind: "bootstrap", providerWorkStarted: false });
     expect(readTransientRecoveryContractFromRun(persisted(result))).toEqual({ errorFamily: "transient_upstream", retryNotBefore: null });

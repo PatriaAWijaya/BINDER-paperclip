@@ -156,7 +156,6 @@ import type {
   AdapterEnvironmentCheck,
   AdapterEnvironmentTestResult,
 } from "@paperclipai/adapter-utils";
-import { evaluateCodexCredentialReadiness } from "@paperclipai/adapter-codex-local/server";
 import type { AdapterAuthSignal, AdapterAuthSignalResponse, CodexAccountBindingClaim } from "@paperclipai/shared";
 import { adapterSettingsService } from "../services/adapter-settings.js";
 import { skillVersionSelectionMap } from "../services/runtime-skill-selections.js";
@@ -247,22 +246,6 @@ import type {
 } from "@paperclipai/shared";
 import { SETUP_TOKEN_TRANSPORT_ADVISORY_CODE } from "@paperclipai/shared";
 import {
-  DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
-  DEFAULT_CODEX_LOCAL_MODEL,
-} from "@paperclipai/adapter-codex-local";
-import {
-  checkStagedCredentialReadiness,
-  promoteDeviceLoginCredential,
-  readSubscriptionAccountId,
-  resolveManagedCodexHomeDir,
-  withAccountHomeSecretMutationLock,
-  withCodexAccountHomePromotionLock,
-} from "@paperclipai/adapter-codex-local/server";
-import {
-  checkStagedGrokCredentialReadiness,
-  promoteGrokDeviceLoginCredential,
-} from "@paperclipai/adapter-grok-local/server";
-import {
   AdapterAuthSessionConflictError,
   createDeviceLoginService,
   createWorkerBoundLoginPtyOpener,
@@ -273,9 +256,6 @@ import {
   type CredentialPromotion,
 } from "../services/device-login-service.js";
 import type { AdapterAuthSessionOwnerResponse } from "@paperclipai/shared";
-import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
-import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
-import { DEFAULT_KIMI_LOCAL_MODEL } from "@paperclipai/adapter-kimi-local";
 import { DEFAULT_OPENCODE_LOCAL_MODEL } from "@paperclipai/adapter-opencode-local";
 import { requireOpenCodeModelId } from "@paperclipai/adapter-opencode-local/server";
 import {
@@ -380,111 +360,6 @@ function readRunIssueId(context: Record<string, unknown> | null) {
 // a mismatch, so the login fails instead of silently pointing agents at the
 // wrong home.
 //
-// Each caller must run this function inside `withAccountHomeSecretMutationLock`,
-// the same lock a `local_encrypted` secret rotate holds for its whole write.
-// A caller that only checks once, early in the promotion, and then reports
-// success later is not enough on its own: the lock this call held is fully
-// released by the time it returns, so a rotate queued behind it can commit a
-// new value before the login service records its terminal `authenticated`
-// state, which happens well after this call returns (see `runTerminalCommit`
-// below, which runs this same check again, under a fresh lock acquisition,
-// immediately before that terminal state commits).
-async function assertAccountHomeSecretMatches(
-  secretsSvc: { resolveSecretValueForDeviceLoginCheck: (companyId: string, secretId: string, context: { configPath: string }) => Promise<string> },
-  companyId: string,
-  secret: { id: string },
-  secretName: string,
-  expectedAccountHomeDir: string,
-): Promise<void> {
-  const storedValue = await secretsSvc.resolveSecretValueForDeviceLoginCheck(companyId, secret.id, {
-    configPath: `secrets.${secretName}`,
-  });
-  if (storedValue !== expectedAccountHomeDir) {
-    throw new Error(
-      `device-login credential promotion rejected: the existing ${secretName} secret does not name this account's own home`,
-    );
-  }
-}
-
-// Confirms no company secret, under any name or provider, still names this
-// account home before a failed promotion deletes the directory. The
-// generated `CODEX_HOME_<handle>` name is not the only secret that can
-// reference this directory: a user can bind a hand-named secret to the same
-// account home, so a check that reads only the generated name misses that
-// secret and deletes a directory it still needs. A bound agent then reads a
-// `CODEX_HOME` value that points at nothing. A secret's value is a plain
-// string regardless of its provider, so an AWS Secrets Manager-backed secret
-// (or any other provider) can equal this directory's path just as a
-// `local_encrypted` secret can; the scan resolves every secret's value, not
-// only `local_encrypted` ones.
-//
-// A secret whose value fails to resolve is NOT proof that secret names a
-// different directory: the resolve call can fail for a secret that would
-// have matched. Treating that failure as a non-match would let the cleanup
-// delete a directory a secret still needs. So the scan fails closed: any
-// resolution failure makes the whole scan report a claim, even when every
-// secret that DID resolve named a different directory.
-//
-// The scan lists every secret once, then resolves each secret's value in
-// turn, and each resolve call is its own round trip. A new secret can enter
-// the company between the initial list and the last resolve call, so a
-// single pass can finish, find no claimant among the secrets it read, and
-// still miss a secret that named this directory moments later. So the scan
-// re-lists after every pass and resolves only the secrets it has not yet
-// checked, and it only reports "no claimant" once a pass finds nothing new
-// to check. A scan that keeps finding new secrets on every pass fails
-// closed after a bounded number of passes, so a fast stream of concurrent
-// secret creation cannot force an unsafe delete.
-//
-// The scan alone still cannot rule out a secret write that commits after the
-// scan's own last pass finishes but before the caller's delete runs: the
-// scan and that write are two separate operations with no shared state, so
-// neither can see the other. The caller closes that window by running the
-// scan and the delete inside `withAccountHomeSecretMutationLock`, the same
-// lock every `local_encrypted` secret create or rotate holds for its whole
-// write. That lock is the atomic protection; the multi-pass scan above stays
-// as a defense-in-depth check for a write path that has not taken the lock.
-const ACCOUNT_HOME_CLAIM_SCAN_MAX_PASSES = 5;
-
-async function anySecretNamesAccountHome(
-  secretsSvc: {
-    hasInstanceAccountHomeClaim: (companyId: string, accountHomeDir: string) => Promise<boolean>;
-    list: (companyId: string) => Promise<Array<{ id: string; name: string; provider: string }>>;
-    resolveSecretValueForDeviceLoginCheck: (
-      companyId: string,
-      secretId: string,
-      context: { configPath: string },
-    ) => Promise<string>;
-  },
-  companyId: string,
-  accountHomeDir: string,
-): Promise<boolean> {
-  if (await secretsSvc.hasInstanceAccountHomeClaim(companyId, accountHomeDir)) return true;
-  const checkedSecretIds = new Set<string>();
-  for (let pass = 0; pass < ACCOUNT_HOME_CLAIM_SCAN_MAX_PASSES; pass += 1) {
-    const secrets = await secretsSvc.list(companyId);
-    const uncheckedSecrets = secrets.filter((secret) => !checkedSecretIds.has(secret.id));
-    if (uncheckedSecrets.length === 0) return false;
-    let resolutionFailed = false;
-    for (const secret of uncheckedSecrets) {
-      checkedSecretIds.add(secret.id);
-      const storedValue = await secretsSvc
-        .resolveSecretValueForDeviceLoginCheck(companyId, secret.id, {
-          configPath: `secrets.${secret.name}`,
-        })
-        .catch(() => {
-          resolutionFailed = true;
-          return null;
-        });
-      if (storedValue === accountHomeDir) return true;
-    }
-    if (resolutionFailed) return true;
-  }
-  // Every pass found a secret it had not yet checked. Fail closed: an
-  // endless stream of new secrets is not proof that none of them claims
-  // this directory.
-  return true;
-}
 
 // Serializes hire requests that share a company and run, so a retried POST
 // cannot race its original past the idempotency lookup: the lookup, the create
@@ -835,21 +710,6 @@ export function agentRoutes(
   // controllers persist across requests.
   const adapterLoginStore = createDbAdapterAuthSessionStore(db);
 
-  // The account-home secret a Codex login validated and bound, keyed by
-  // session id, queued for `runTerminalCommit` to reconfirm right before the
-  // login service commits its terminal `authenticated` write. `promote`'s own
-  // check runs under a lock that is fully released by the time `promote`
-  // returns, so a rotation can still land after that check and before the
-  // terminal write; `runTerminalCommit` closes that gap by re-running the
-  // same check under a fresh lock acquisition that it holds across the
-  // terminal write itself. `runTerminalCommit` deletes the entry it reads, so
-  // nothing outlives one login attempt.
-  const pendingAccountHomeSecretCommits = new Map<
-    string,
-    { secretId: string; secretName: string; accountHomeDir: string; companyIdentityDiffers: boolean }
-  >();
-
-
   const adapterLoginService = createDeviceLoginService({
     store: adapterLoginStore,
     runtime: createProductionLoginSessionRuntime({
@@ -874,328 +734,15 @@ export function agentRoutes(
           })
         : undefined,
     }),
-    // The mandatory credential promotion, keyed by adapter type. A successful
-    // login authenticates only after the promotion for its own adapter type
-    // validates the exact staged credential, runs an independent readiness
-    // check, confirms the session still holds the sole active claim, and
-    // writes the credential into the company scope. A rejected or unready
-    // credential fails the session and writes nothing. Keying by adapter type
-    // keeps a `grok_local` login from ever running the Codex promotion (and
-    // vice versa): each entry closes over its own readiness check and its own
-    // promotion function.
-    promotionByAdapterType: {
-      codex_local: {
-        // Hold one lock across the whole promotion sequence below: the
-        // credential write, the existing-secret check, the secret create, and
-        // the cleanup a create failure can trigger. Two different logins for
-        // the SAME Codex account run this whole sequence one at a time, so a
-        // login can never decide to delete the shared account-home directory
-        // while another login's own sequence is still mid-way through writing
-        // its credential or binding its own secret to that same directory. A
-        // lock around only the directory-creation step is not enough: that
-        // lock is already released by the time a login reaches the secret
-        // bind, so a second login can write its credential and be about to
-        // bind its own secret while the first login's later, unrelated
-        // secret-write failure removes the directory both logins now share.
-        async promote(authBytes, context) {
-          const managedSession = await adapterLoginStore.get(context.sessionId);
-          if (managedSession?.aiConnection) {
-            await adapterLoginStore.withCompanyAdapterPromotionLock(context.companyId, context.startedByUserId, context.adapterType, async () => {
-              if (!(await checkStagedCredentialReadiness(authBytes)).ready) throw new Error("Provider credential is not ready");
-              await aiConnectionService(db).save(context.companyId, context.startedByUserId, managedSession.aiConnection!, authBytes.toString("utf8"), { id: context.sessionId }, undefined, context.managementContext);
-            });
-            return;
-          }
 
-          return withCodexAccountHomePromotionLock(undefined, context.companyId, async () => {
-            // Hold the promotion critical-section lock across the ownership check
-            // and the credential write. The reaper takes the same lock before it
-            // reclaims a stale `promoting` row. So a reclaim never interleaves with
-            // a live write: the reaper either wins the lock first and the
-            // ownership check then reads a reclaimed row and writes nothing, or
-            // the write finishes first under the lock and the reaper reclaims only
-            // after it completes. A read-only fence is not enough, because the
-            // filesystem write can start after the fence; the lock spans the whole
-            // section.
-            const result = await adapterLoginStore.withCompanyAdapterPromotionLock(
-              context.companyId,
-              context.startedByUserId,
-              context.adapterType,
-              () =>
-                promoteDeviceLoginCredential({
-                  authBytes,
-                  companyId: context.companyId,
-                  userInitiated: true,
-                  checkReadiness: (bytes) => checkStagedCredentialReadiness(bytes),
-                  isSoleActiveOwner: async () => {
-                    // The partial unique index allows one active row per company and
-                    // adapter. So a `promoting` row for this session is the sole
-                    // active owner of the company credential slot. The read runs
-                    // inside the lock, so it observes a reaper reclaim that committed
-                    // before this section acquired the lock.
-                    const row = await adapterLoginStore.get(context.sessionId);
-                    return row?.status === "promoting" && row.companyId === context.companyId;
-                  },
-                  log: (line) => {
-                    // The promotion lines carry no token bytes and no raw account id,
-                    // so it is safe to log them with the session identifier.
-                    logger.info({ sessionId: context.sessionId }, line);
-                  },
-                }),
-            );
-            // A resolved promotion is not necessarily an accepted promotion. In
-            // particular, a reaper/expiry race can revoke this session's sole
-            // ownership between the service transition and Decision H. Fail closed:
-            // only a credential write or a deliberate safe keep can authenticate.
-            if (result.outcome !== "promoted" && result.outcome !== "kept") {
-              throw new Error(`device-login credential promotion rejected: ${result.outcome}`);
-            }
-            // The account's own home is durable at this point (the promotion above
-            // wrote it fail-loud). Name it with a company secret, so any agent can
-            // bind to it. Reading the secret by name first keeps a repeat login for
-            // the same account idempotent: `create` throws a conflict when the name
-            // already exists.
-            const handle = result.accountId ? toAccountHandle(result.accountId) : null;
-            if (!handle || !result.accountHomeDir) {
-              throw new Error(
-                "device-login credential promotion rejected: the promotion carried no account home",
-              );
-            }
-            const secretName = `CODEX_HOME_${handle}`;
-            const accountHomeDir = result.accountHomeDir;
-            // Whether the company default home ended on a DIFFERENT account
-            // than this login. The promotion's own company-home write already
-            // ran (a seed or same-identity refresh landed this login there; a
-            // different account's claim was kept), so this read observes the
-            // post-promotion state. The flag rides to the owner status read,
-            // where the client offers binding the agent to this account — the
-            // only way the login can take effect while another account holds
-            // the company slot. Any read failure degrades to `false`: the
-            // client then simply offers nothing, never a wrong bind.
-            const companyIdentityDiffers = await (async () => {
-              try {
-                const companyAuthBytes = await readFile(
-                  path.join(resolveManagedCodexHomeDir(process.env, context.companyId), "auth.json"),
-                );
-                const companyIdentity = readSubscriptionAccountId(companyAuthBytes);
-                return companyIdentity !== null && companyIdentity !== result.accountId;
-              } catch {
-                return false;
-              }
-            })();
-            const existingSecret = await secretsSvc.getByName(context.companyId, secretName);
-            if (existingSecret) {
-              // A same-name secret already exists. Confirm it still names this
-              // account's own home before treating a repeat login as a success:
-              // the name alone is not proof of a match.
-              //
-              // Run the check inside the same lock a `local_encrypted` secret
-              // rotate holds for its whole write, the same lock a rotate
-              // takes. This is an early fail-fast only: the lock is fully
-              // released once this call returns, well before the login
-              // service commits its terminal state, so queue the same check
-              // for `runTerminalCommit` to run again right before that
-              // commit, under a fresh lock acquisition it holds across the
-              // commit itself.
-              await withAccountHomeSecretMutationLock(undefined, context.companyId, () =>
-                assertAccountHomeSecretMatches(secretsSvc, context.companyId, existingSecret, secretName, accountHomeDir),
-              );
-              pendingAccountHomeSecretCommits.set(context.sessionId, {
-                secretId: existingSecret.id,
-                secretName,
-                accountHomeDir,
-                companyIdentityDiffers,
-              });
-              return;
-            }
-            try {
-              const createdSecret = await secretsSvc.create(
-                context.companyId,
-                {
-                  name: secretName,
-                  provider: "local_encrypted",
-                  value: accountHomeDir,
-                  description: `CODEX_HOME generated by logging into account ${handle}`,
-                },
-                { userId: context.startedByUserId, agentId: null },
-              );
-              // The value just committed is correct at this instant, but a
-              // rotate queued behind the create's own lock can still commit a
-              // different value before the login service records its
-              // terminal state. Queue the same reconfirm `runTerminalCommit`
-              // runs for the two branches above.
-              pendingAccountHomeSecretCommits.set(context.sessionId, {
-                secretId: createdSecret.id,
-                secretName,
-                accountHomeDir,
-                companyIdentityDiffers,
-              });
-            } catch (err) {
-              if (err instanceof HttpError && err.status === 409) {
-                // A conflict means a concurrent login for the same account won the
-                // create race. Confirm the winning secret still names this
-                // account's own home before treating the race as a successful,
-                // idempotent login.
-                const winningSecret = await secretsSvc.getByName(context.companyId, secretName);
-                if (!winningSecret) {
-                  throw new Error(
-                    `device-login credential promotion rejected: the ${secretName} secret conflict could not be resolved`,
-                  );
-                }
-                // Same lock and the same reasoning as the pre-existing-secret
-                // check above: an early fail-fast only, so also queue the
-                // same check for `runTerminalCommit` to run again, under a
-                // fresh lock acquisition it holds across the terminal commit.
-                await withAccountHomeSecretMutationLock(undefined, context.companyId, () =>
-                  assertAccountHomeSecretMatches(secretsSvc, context.companyId, winningSecret, secretName, accountHomeDir),
-                );
-                pendingAccountHomeSecretCommits.set(context.sessionId, {
-                  secretId: winningSecret.id,
-                  secretName,
-                  accountHomeDir,
-                  companyIdentityDiffers,
-                });
-                return;
-              }
-              // The account home write failed for a reason other than a naming
-              // conflict. Remove the directory only when this exact login created
-              // it AND no secret, under any name, still names it. The lock
-              // around this whole method already rules out another
-              // SAME-ACCOUNT LOGIN from being mid-sequence here, but it does
-              // not rule out a secret a different path created at this exact
-              // directory in between the read above and this failure — for
-              // example, a concurrent login for the same account that won a
-              // race on this exact name, or a user who names a secret by hand
-              // under a different name entirely. The re-check is this call's
-              // only signal for that case, so it stays even under the lock:
-              // `accountHomeCreated` alone is not proof no such secret now
-              // claims the directory, and a same-name check alone is not proof
-              // either, because the claiming secret can carry any name.
-              //
-              // The check and the delete run inside `withAccountHomeSecretMutationLock`,
-              // the same lock the secrets service holds for the whole of a
-              // `local_encrypted` secret's create or rotate call. That closes the
-              // window `anySecretNamesAccountHome`'s own multi-pass scan cannot: a
-              // secret write that commits after this check's last pass but before
-              // the delete runs. Under the shared lock, a write either finishes
-              // (and becomes visible to the check) before this section acquires the
-              // lock, or it waits for this section to finish before it can commit.
-              if (result.accountHomeCreated) {
-                await withAccountHomeSecretMutationLock(undefined, context.companyId, async () => {
-                  const claimed = await anySecretNamesAccountHome(secretsSvc, context.companyId, accountHomeDir);
-                  if (!claimed) {
-                    await rm(accountHomeDir, { recursive: true, force: true }).catch(() => undefined);
-                  }
-                });
-              }
-              throw new Error(
-                "device-login credential promotion rejected: failed to record the account home secret",
-              );
-            }
-          });
-        },
-        // The login service calls this immediately before it commits its
-        // terminal `authenticated` write, wrapping that write in the
-        // callback it hands in as `commit`. `promote` above already
-        // validated the bound account-home secret once, early, but its own
-        // lock is fully released by the time `promote` returns — well before
-        // this runs. Re-run the same check here, and hold the SAME lock
-        // across both the check and `commit`, so a rotate cannot land in the
-        // gap between the validated value and the terminal write that
-        // reports it as authenticated: a rotate either finishes (and this
-        // check reads its new value, and rejects) before this section
-        // acquires the lock, or it waits for this section — including the
-        // terminal commit — to finish first.
-        async runTerminalCommit(commit, context) {
-          const pending = pendingAccountHomeSecretCommits.get(context.sessionId);
-          pendingAccountHomeSecretCommits.delete(context.sessionId);
-          if (!pending) {
-            // `promote` never reached a secret bind for this session (for
-            // example, a rejected promotion already failed the login before
-            // the service ever reaches this call). Nothing to reconfirm.
-            return commit();
-          }
-          return withAccountHomeSecretMutationLock(undefined, context.companyId, async () => {
-            // Resolve by the secret's id, not its name: a rotate changes the
-            // value under the same id, so re-resolving this id picks up a
-            // rotation the same way the very first check would have, with no
-            // need to re-look the secret up by name. A deleted secret makes
-            // this resolve call itself fail (unlike a value mismatch, which
-            // `assertAccountHomeSecretMatches` turns into its own error), and
-            // that failure propagates the same way: the login never
-            // authenticates.
-            await assertAccountHomeSecretMatches(
-              secretsSvc,
-              context.companyId,
-              { id: pending.secretId },
-              pending.secretName,
-              pending.accountHomeDir,
-            );
-            // The claim rides the terminal write itself, so it is durable, it
-            // survives a restart, and it can never exist for a session that
-            // did not authenticate.
-            return commit({
-              secretId: pending.secretId,
-              companyIdentityDiffers: pending.companyIdentityDiffers,
-            });
-          });
-        },
-      },
-      grok_local: {
-        async promote(authBytes, context) {
-          const managedSession = await adapterLoginStore.get(context.sessionId);
-          if (managedSession?.aiConnection) {
-            await adapterLoginStore.withCompanyAdapterPromotionLock(context.companyId, context.startedByUserId, context.adapterType, async () => {
-              if (!(await checkStagedGrokCredentialReadiness(authBytes)).ready) throw new Error("Provider credential is not ready");
-              await aiConnectionService(db).save(context.companyId, context.startedByUserId, managedSession.aiConnection!, authBytes.toString("utf8"), { id: context.sessionId }, undefined, context.managementContext);
-            });
-            return;
-          }
+    // No credential promotion is configured. The adapter deletion removed
+    // the only displayed-code adapters (codex_local, grok_local), so no
+    // device-login session can start: the route gate already rejects every
+    // type through the registry, and the service falls back to its
+    // unconfigured promotion, which fails closed. The Codex/Grok
+    // managed-home promotion helpers died with the adapters.
+    promotionByAdapterType: {} satisfies Partial<Record<AgentAdapterType, CredentialPromotion>>,
 
-          // The same promotion critical-section lock as the Codex entry above,
-          // keyed by the same `(companyId, startedByUserId, adapterType)` tuple,
-          // so a Grok reclaim and a Grok write never interleave.
-          const outcome = await adapterLoginStore.withCompanyAdapterPromotionLock(
-            context.companyId,
-            context.startedByUserId,
-            context.adapterType,
-            () =>
-              promoteGrokDeviceLoginCredential({
-                authBytes,
-                companyId: context.companyId,
-                userInitiated: true,
-                checkReadiness: (bytes) => checkStagedGrokCredentialReadiness(bytes),
-                isSoleActiveOwner: async () => {
-                  const row = await adapterLoginStore.get(context.sessionId);
-                  return row?.status === "promoting" && row.companyId === context.companyId;
-                },
-                log: (line) => {
-                  // The promotion lines carry no token bytes and no personal
-                  // field, so it is safe to log them with the session identifier.
-                  logger.info({ sessionId: context.sessionId }, line);
-                },
-              }),
-          );
-          if (outcome === "kept_foreign_identity") {
-            // The login produced a different account than the one the company
-            // credential home already holds. Fail the session, so the operator
-            // never sees a false `authenticated` for an account the system will
-            // not use.
-            throw new Error(
-              "device-login credential promotion rejected: the login is a different account than the one already set for this company; the existing account was kept",
-            );
-          }
-          // A `kept` outcome is a successful login too: the company home
-          // already holds a same-account credential that is not older than
-          // this one (for example, a teardown copy-back installed a fresher
-          // copy while this login was in progress), so a later run still
-          // authenticates as the same account.
-          if (outcome !== "promoted" && outcome !== "kept") {
-            throw new Error(`device-login credential promotion rejected: ${outcome}`);
-          }
-        },
-      },
-    } satisfies Partial<Record<AgentAdapterType, CredentialPromotion>>,
     recordActivity: (event) => {
       // The event carries no URL, no code, no credential, no account identifier,
       // and no lease identifier, so it is safe to log.
@@ -2233,17 +1780,6 @@ export function agentRoutes(
     return privateKey.export({ type: "pkcs8", format: "pem" }).toString();
   }
 
-  function ensureGatewayDeviceKey(
-    adapterType: string | null | undefined,
-    adapterConfig: Record<string, unknown>,
-  ): Record<string, unknown> {
-    if (adapterType !== "openclaw_gateway") return adapterConfig;
-    const disableDeviceAuth = parseBooleanLike(adapterConfig.disableDeviceAuth) === true;
-    if (disableDeviceAuth) return adapterConfig;
-    if (asNonEmptyString(adapterConfig.devicePrivateKeyPem)) return adapterConfig;
-    return { ...adapterConfig, devicePrivateKeyPem: generateEd25519PrivateKeyPem() };
-  }
-
   function codexLocalAgentHome(companyId: string, agentId: string): string {
     const instanceRoot = resolvePaperclipInstanceRootForAdapter({
       homeDir: asNonEmptyString(process.env.PAPERCLIP_HOME) ?? undefined,
@@ -2369,31 +1905,10 @@ export function agentRoutes(
     if (adapterType === "paperclip_runner") {
       return normalizePaperclipRunnerAdapterConfig(adapterType, next);
     }
-    if (adapterType === "codex_local") {
-      const hasBypassFlag =
-        typeof next.dangerouslyBypassApprovalsAndSandbox === "boolean" ||
-        typeof next.dangerouslyBypassSandbox === "boolean";
-      if (!hasBypassFlag) {
-        next.dangerouslyBypassApprovalsAndSandbox = DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX;
-      }
-      return ensureGatewayDeviceKey(adapterType, next);
-    }
-    if (adapterType === "gemini_local" && !asNonEmptyString(next.model)) {
-      next.model = DEFAULT_GEMINI_LOCAL_MODEL;
-      return ensureGatewayDeviceKey(adapterType, next);
-    }
-    if (adapterType === "kimi_local" && !asNonEmptyString(next.model)) {
-      next.model = DEFAULT_KIMI_LOCAL_MODEL;
-      return ensureGatewayDeviceKey(adapterType, next);
-    }
     if (adapterType === "opencode_local" && !asNonEmptyString(next.model)) {
       next.model = DEFAULT_OPENCODE_LOCAL_MODEL;
-      return ensureGatewayDeviceKey(adapterType, next);
     }
-    if (adapterType === "cursor" && !asNonEmptyString(next.model)) {
-      next.model = DEFAULT_CURSOR_LOCAL_MODEL;
-    }
-    return ensureGatewayDeviceKey(adapterType, next);
+    return next;
   }
 
   async function assertAdapterConfigConstraints(
@@ -3589,50 +3104,6 @@ export function agentRoutes(
     return "absent";
   }
 
-  // The codex_local branch of the auth-signal read. The host filesystem check
-  // (`evaluateCodexCredentialReadiness` against `process.env`) describes only
-  // the Paperclip host, so it is authoritative for the null-environment and
-  // "local" driver cases, where the host is the execution target. For a
-  // non-local environment (a sandbox), the host's own credential state says
-  // nothing about that sandbox, so the route checks the environment's own
-  // OPENAI_API_KEY binding instead and otherwise reports "unknown" -- never
-  // "present" from a host login the sandbox does not share.
-  async function evaluateCodexAuthSignal(
-    req: Request,
-    companyId: string,
-    environmentId: string | null,
-  ): Promise<AdapterAuthSignal> {
-    if (environmentId) {
-      const environment = await environmentsSvc.getById(environmentId);
-      if (environment && environment.driver !== "local") {
-        const environmentEnv = Object.fromEntries(
-          Object.entries(parseObject(environment.envVars)).filter(
-            ([key]) => !isForbiddenConfigEnvKey(key),
-          ),
-        );
-        const apiKeyBinding = environmentEnv.OPENAI_API_KEY;
-        if (apiKeyBinding !== undefined) {
-          const resolution = await secretsSvc.resolveEnvBindings(
-            companyId,
-            { OPENAI_API_KEY: apiKeyBinding },
-            buildActorSecretContext(req, { consumerType: "environment", consumerId: environmentId }),
-          );
-          if (asNonEmptyString(resolution.env.OPENAI_API_KEY)) {
-            return "present";
-          }
-        }
-        return "unknown";
-      }
-    }
-
-    const readiness = await evaluateCodexCredentialReadiness({
-      env: process.env,
-      companyId,
-      configuredCodexHome: null,
-      configuredApiKey: null,
-    });
-    return readiness.ready ? "present" : "absent";
-  }
 
   // The cheap host-local authentication signal for one adapter type. The route
   // reads host-local state only: a stored Claude login, a resolved environment
@@ -3657,8 +3128,6 @@ export function agentRoutes(
       try {
         if (type === "claude_local") {
           status = await evaluateClaudeAuthSignal(req, companyId, environmentId);
-        } else if (type === "codex_local") {
-          status = await evaluateCodexAuthSignal(req, companyId, environmentId);
         }
       } catch {
         // A failed read is never a claim that the credential is absent. Report

@@ -4,7 +4,8 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
-import * as codexServer from "@paperclipai/adapter-codex-local/server";
+import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
+import * as accountHomeSecretMutationLock from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
 import express from "express";
 import request from "supertest";
 import { createDb, companies, companyMemberships, companyObservability, companySecrets, companySecretBindings, activityLog } from "@paperclipai/db";
@@ -78,9 +79,9 @@ describe("company agent observability", () => {
       capture: { ...DEFAULT_AGENT_OBSERVABILITY_CAPTURE }, destination: { provider: "otlp", endpointBaseUrl: "https://collector.example" },
       credentials: { mode: "replace", headers: [{ name: "authorization", value: "retained-value" }] } });
     const [row] = await db.select().from(companyObservability).where(eq(companyObservability.companyId, f.companyId));
-    const original = codexServer.withAccountHomeSecretMutationLock;
+    const original = withAccountHomeSecretMutationLock;
     let probed = false;
-    const spy = vi.spyOn(codexServer, "withAccountHomeSecretMutationLock").mockImplementation(async (env, companyId, work) => {
+    const spy = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock").mockImplementation(async (env, companyId, work) => {
       if (companyId === f.companyId && !probed) {
         probed = true;
         // A separate real database connection must acquire these rows NOWAIT

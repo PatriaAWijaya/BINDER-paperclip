@@ -17,10 +17,10 @@ import { defaultCreateValues } from "./agent-config-defaults";
 import { buildNewAgentHirePayload } from "../lib/new-agent-hire-payload";
 import { ApiError } from "../api/client";
 import { aiConnectionsApi } from "../api/ai-connections";
-import { CodexLocalConfigFields } from "../adapters/codex-local/config-fields";
+import { CodexLocalConfigFields } from "../adapters/paperclip-runner/codex-config-fields";
 import type { AdapterConfigFieldsProps } from "../adapters/types";
 import { buildClaudeLocalConfig } from "@paperclipai/adapter-claude-local/ui";
-import { DEFAULT_CODEX_LOCAL_MODEL } from "@paperclipai/adapter-codex-local";
+import { DEFAULT_CODEX_LOCAL_MODEL } from "@paperclipai/shared";
 import { ConfigurationTab } from "../pages/AgentDetail";
 import { ConfigurationTab as ClassicConfigurationTab } from "../pages/AgentDetail.production";
 
@@ -698,7 +698,10 @@ describe("AgentConfigForm environment selector", () => {
       </TooltipProvider></ToastProvider></QueryClientProvider>));
       await flushReact();
       expect(current.codexLegacySandboxBypass).toBe(false);
-      for (const harness of ["claude_local", "codex_local"]) {
+      // codex_local is no longer offered in the Harness dropdown (its UI
+      // adapter was deleted); switching between the kept harnesses still
+      // clears the Codex draft policy.
+      for (const harness of ["claude_local", "opencode_local"]) {
         await clickElement(container.querySelector('[aria-label="Harness"]'));
         await clickElement(document.querySelector(`[role="option"][data-value="${harness}"]`));
         await flushReact();
@@ -763,7 +766,9 @@ describe("AgentConfigForm environment selector", () => {
     const options = document.querySelector('[role="listbox"][aria-label="Harness"]');
     expect(options).not.toBeNull();
     const values = Array.from(options!.querySelectorAll('[role="option"]'), option => option.getAttribute("data-value"));
-    expect(values).toEqual(expect.arrayContaining(["claude_local", "codex_local", "opencode_local", "pi_local"]));
+    expect(values).toEqual(expect.arrayContaining(["claude_local", "opencode_local"]));
+    expect(values).not.toContain("codex_local");
+    expect(values).not.toContain("pi_local");
     expect(values).not.toContain("process");
     expect(values).not.toContain("http");
     expect(options!.textContent).not.toContain("Coming soon");
@@ -1266,7 +1271,6 @@ describe("AgentConfigForm environment selector", () => {
   });
 
   it.each([
-    ["Codex", "codex_local"],
     ["Claude Code", "claude_local"],
   ])("clears OpenCode model settings when choosing %s so the server can apply its default", async (_label, adapterType) => {
     const accountList = vi.spyOn(aiConnectionsApi, "list").mockResolvedValue({

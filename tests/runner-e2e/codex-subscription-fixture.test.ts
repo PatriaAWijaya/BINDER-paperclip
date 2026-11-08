@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { codexSubscriptionAgentConfig, stageCodexSubscriptionFixture } from "./codex-subscription-fixture.js";
-import { resolveManagedCodexHomeDir } from "../../packages/adapters/codex-local/src/server/codex-home.js";
+import { resolveManagedCodexHomeDir } from "../../server/src/services/native-runtime/codex-auth-cache-helpers.js";
 import { buildPaperclipServerEnvironment } from "./harness-env.js";
 import { normalizedSecrets, findSecretLeak } from "./redaction.js";
 const companyId = "11111111-2222-4333-8444-555555555555";

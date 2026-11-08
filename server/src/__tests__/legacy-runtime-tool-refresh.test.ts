@@ -4,43 +4,31 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdapterExecutionContext } from "@paperclipai/adapter-utils";
 
-// Pi resolves its session directory at module load. Keep that test directory
-// under the temporary root instead of the operator's real home.
-vi.mock("node:os", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:os") & { default: typeof import("node:os") }>();
-  return { ...actual, default: { ...actual.default, homedir: actual.tmpdir }, homedir: actual.tmpdir };
-});
 vi.mock("@paperclipai/adapter-utils/execution-target", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@paperclipai/adapter-utils/execution-target")>();
   return { ...actual, runAdapterExecutionTargetProcess: vi.fn() };
 });
 import { runAdapterExecutionTargetProcess } from "@paperclipai/adapter-utils/execution-target";
-import { execute as gemini } from "@paperclipai/adapter-gemini-local/server";
-import { execute as kimi } from "@paperclipai/adapter-kimi-local/server";
-import { execute as cursor } from "@paperclipai/adapter-cursor-local/server";
 import { execute as opencode } from "@paperclipai/adapter-opencode-local/server";
-import { execute as pi } from "@paperclipai/adapter-pi-local/server";
 
 const roots: string[] = [];
 afterEach(async () => { vi.clearAllMocks(); await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
 
 describe("legacy environment tool access on resumed conversations", () => {
-  it.each([
-    ["gemini_local", gemini, "--resume"], ["kimi_local", kimi, "-r"],
-    ["cursor", cursor, "--resume"], ["opencode_local", opencode, "--session"], ["pi_local", pi, "--session"],
-  ] as const)("refreshes %s without dropping its conversation", async (type, execute, resumeFlag) => {
+  // The it.each used to cover gemini_local, kimi_local, cursor and pi_local
+  // too. Those adapters died with the adapter deletion, so only the
+  // opencode_local row remains (the Pi node:os homedir mock, the Pi
+  // session.jsonl setup and the kimi/pi stdout branches died with them).
+  // Deleted 8 Nov 2026.
+  it("refreshes opencode_local without dropping its conversation", async () => {
+    const type = "opencode_local" as const;
+    const execute = opencode;
+    const resumeFlag = "--session";
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-cli-tool-refresh-")); roots.push(root);
     const command = path.join(root, "agent");
     await fs.writeFile(command, "#!/bin/sh\nprintf 'provider  model\\nopenai  gpt-5\\n'\n", { mode: 0o755 });
-    const sessionId = type === "pi_local" ? path.join(root, "session.jsonl") : "existing-session";
-    if (type === "pi_local") await fs.writeFile(sessionId, JSON.stringify({ type: "session", cwd: root }) + "\n");
-    const stdout = type === "kimi_local"
-      ? JSON.stringify({ role: "meta", type: "session.resume_hint", session_id: sessionId })
-      : type === "opencode_local"
-        ? JSON.stringify({ type: "text", sessionID: sessionId, part: { text: "done" } })
-        : type === "pi_local"
-          ? JSON.stringify({ type: "agent_end", messages: [{ role: "assistant", content: "done" }] })
-          : JSON.stringify({ type: "result", subtype: "success", session_id: sessionId, result: "done" });
+    const sessionId = "existing-session";
+    const stdout = JSON.stringify({ type: "text", sessionID: sessionId, part: { text: "done" } });
     const invocations: Array<{ args: string[]; env: Record<string, string> }> = [];
     vi.mocked(runAdapterExecutionTargetProcess).mockImplementation(async (_runId, _target, _command, args, options) => {
       invocations.push({ args, env: options.env ?? {} });

@@ -16,7 +16,7 @@ import * as workspaceRecovery from "../services/workspace-recovery.js";
 import * as workspaceRecoveryWork from "../services/workspace-recovery-work.js";
 import { idleBackupWakeMarker, markIdleBackupWakeRequired } from "../services/idle-database-backup.js";
 import { DELIVERY_QUEUES } from "../services/delivery-work-notifications.js";
-import { decisionService, decisionRetentionService, toolAccessService, githubConnectionEventService, reconcileBuiltInAgentsOnStartup, reconcileCodexLocalManagedHomesOnStartup, reconcilePersistedRuntimeServicesOnStartup } from "../services/index.js";
+import { decisionService, decisionRetentionService, toolAccessService, githubConnectionEventService, reconcileBuiltInAgentsOnStartup, reconcilePersistedRuntimeServicesOnStartup } from "../services/index.js";
 
 import { companies, runDatabaseBackup, type Db } from "@paperclipai/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -522,16 +522,6 @@ vi.mock("../services/index.js", () => ({
         monthlyMonths: 1,
       },
     })),
-  })),
-  reconcileCodexLocalManagedHomesOnStartup: vi.fn(async () => ({
-    scanned: 0,
-    seeded: 0,
-    alreadySeeded: 0,
-    externalOverride: 0,
-    noManagedHome: 0,
-    sourceAuthMissing: 0,
-    failed: 0,
-    seededAgentIds: [],
   })),
   reconcileBuiltInAgentsOnStartup: vi.fn(async () => ({
     scanned: 0,
@@ -1237,7 +1227,6 @@ describe("startServer feedback export wiring", () => {
 
   it.each(([
     ["built-in agents", reconcileBuiltInAgentsOnStartup],
-    ["managed homes", reconcileCodexLocalManagedHomesOnStartup],
     ["runtime services", reconcilePersistedRuntimeServicesOnStartup],
   ] as const).flatMap(([name, reconcile]) => [false, true].map(fail => ({ name, reconcile, fail }))))
   ("counts detached $name startup writes after readiness (failure=$fail)", async ({ reconcile, fail }) => {

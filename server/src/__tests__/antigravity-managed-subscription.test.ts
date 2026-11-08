@@ -35,8 +35,11 @@ vi.mock("../services/quota-credential-recovery.js", () => ({
     constructor(cause: unknown) { super("The selected account credential is awaiting durable recovery. Retry shortly.", { cause }); }
   },
 }));
-vi.mock("@paperclipai/adapter-codex-local/server", () => ({
-  decideCodexAuthMerge: vi.fn(), withAccountHomeSecretMutationLock: async (_environment: unknown, _companyId: unknown, work: () => Promise<void>) => work(),
+vi.mock("../services/native-runtime/codex-auth-merge-decision.js", () => ({
+  decideCodexAuthMerge: vi.fn(),
+}));
+vi.mock("@paperclipai/adapter-utils/account-home-secret-mutation-lock", () => ({
+  withAccountHomeSecretMutationLock: async (_environment: unknown, _companyId: unknown, work: () => Promise<void>) => work(),
 }));
 import { prepareManagedAiRuntime, withManagedAiProbe } from "../services/ai-connection-runtime.js";
 import { NativeEnvironmentProbeCleanupError } from "../vendor/paperclip-runner/index.js";

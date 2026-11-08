@@ -1,8 +1,6 @@
-import { codexLocalReasoningEffortsForModel, isCodexLocalFastModeSupported, isCodexLocalKnownModel } from "@paperclipai/adapter-codex-local";
+import { codexLocalReasoningEffortsForModel, isCodexLocalKnownModel } from "@paperclipai/shared";
 import { claudeLocalReasoningEffortsForModel } from "@paperclipai/adapter-claude-local";
 import { resolvePaperclipRunnerModel } from "@paperclipai/adapter-utils";
-import { DEFAULT_GROK_LOCAL_MODEL, grokLocalReasoningEffortsForModel } from "@paperclipai/adapter-grok-local";
-import { DEFAULT_KIMI_LOCAL_MODEL, modelSupportsEffort, KIMI_SUPPORTED_EFFORTS } from "@paperclipai/adapter-kimi-local";
 import { aiConnectionBindingSchema, aiRuntimeConnectionBindingSchema, agentHarnessType, type Agent, type IssueAssigneeAdapterOverrides } from "@paperclipai/shared";
 
 export interface ComposerRunSettings {
@@ -18,8 +16,7 @@ export const EFFORT_LABELS: Record<string, string> = {
 };
 
 const MODEL_ADAPTERS = new Set([
-  "claude_local", "codex_local", "opencode_local", "pi_local", "kimi_local",
-  "gemini_local", "cursor", "cursor_cloud", "grok_local", "hermes_local", "paperclip_runner",
+  "claude_local", "opencode_local", "paperclip_runner",
 ]);
 
 export function supportsComposerModel(agent: Agent | undefined): boolean {
@@ -40,8 +37,6 @@ export function composerDefaultModel(agent: Agent | undefined): string {
     // Bedrock/Vertex. Without an explicit agent setting, the default is unknown.
     return typeof env.ANTHROPIC_MODEL === "string" ? env.ANTHROPIC_MODEL.trim() : "";
   }
-  if (agent.adapterType === "grok_local") return DEFAULT_GROK_LOCAL_MODEL;
-  if (agent.adapterType === "kimi_local") return DEFAULT_KIMI_LOCAL_MODEL;
   if (agent.adapterType === "paperclip_runner") {
     const provider = composerCatalogProvider(agent);
     if (provider === "codex" || provider === "opencode") return resolvePaperclipRunnerModel(provider, config.model);
@@ -64,44 +59,39 @@ export function composerCatalogProvider(agent: Agent | undefined): string | unde
 
 export function composerEfforts(agent: Agent | undefined, model: string, catalogIds: readonly string[]): readonly string[] {
   if (!agent) return [];
-  const effectiveModel = model.trim() || (agent.adapterType === "grok_local" ? DEFAULT_GROK_LOCAL_MODEL
-    : agent.adapterType === "kimi_local" ? DEFAULT_KIMI_LOCAL_MODEL : "");
+  const effectiveModel = model.trim() || "";
   if (!effectiveModel) return [];
   const pool = aiRuntimeConnectionBindingSchema.safeParse(agent.runtimeConfig?.aiConnection).data?.mode === "router";
   if (pool && agent.adapterType === "paperclip_runner") return isCodexLocalKnownModel(effectiveModel) ? codexLocalReasoningEffortsForModel(effectiveModel) : /^claude-/.test(effectiveModel) ? claudeLocalReasoningEffortsForModel(effectiveModel) : [];
-  if (agent.adapterType === "codex_local" || (agent.adapterType === "paperclip_runner" && composerCatalogProvider(agent) === "codex")) {
+  if (agent.adapterType === "paperclip_runner" && composerCatalogProvider(agent) === "codex") {
     return isCodexLocalKnownModel(effectiveModel) ? codexLocalReasoningEffortsForModel(effectiveModel) : [];
   }
   if (!catalogIds.includes(effectiveModel)) return [];
   if (agentHarnessType(agent.adapterType, agent.adapterConfig) === "claude_local") return claudeLocalReasoningEffortsForModel(effectiveModel);
-  if (agentHarnessType(agent.adapterType, agent.adapterConfig) === "grok_local") return grokLocalReasoningEffortsForModel(effectiveModel);
-  if (agent.adapterType === "pi_local") return ["off", "minimal", "low", "medium", "high", "xhigh"];
-  if (agent.adapterType === "kimi_local" && typeof agent.adapterConfig.engine === "string"
-    && agent.adapterConfig.engine.trim().toLowerCase() === "cli" && modelSupportsEffort(effectiveModel)) return KIMI_SUPPORTED_EFFORTS;
   return [];
 }
 
 export function composerFastAvailable(agent: Agent | undefined, model: string): boolean {
-  return Boolean(agent && agent.adapterType === "codex_local" && isCodexLocalKnownModel(model) && isCodexLocalFastModeSupported(model));
+  // Fast mode was codex_local-only; the Paperclip Runner drops fastMode from
+  // its config, so no kept adapter offers it.
+  return false;
 }
 
 export function readComposerRunSettings(overrides: IssueAssigneeAdapterOverrides | null | undefined, adapterType: string | undefined): ComposerRunSettings {
   const config = overrides?.adapterConfig ?? {};
   const effortKey = composerEffortKey(adapterType);
   const effortValue = effortKey && (config[effortKey]
-    ?? (adapterType === "codex_local" || adapterType === "paperclip_runner" ? config.reasoningEffort ?? config.effort : undefined));
+    ?? (adapterType === "paperclip_runner" ? config.reasoningEffort ?? config.effort : undefined));
   return {
     model: typeof config.model === "string" ? config.model : null,
     effort: typeof effortValue === "string" ? effortValue : null,
-    fast: adapterType === "codex_local" && config.fastMode === true,
+    fast: false,
   };
 }
 
 function composerEffortKey(adapterType: string | undefined): string | null {
-  if (adapterType === "codex_local" || adapterType === "paperclip_runner") return "modelReasoningEffort";
-  if (adapterType === "claude_local" || adapterType === "kimi_local") return "effort";
-  if (adapterType === "grok_local") return "reasoningEffort";
-  if (adapterType === "pi_local") return "thinking";
+  if (adapterType === "paperclip_runner") return "modelReasoningEffort";
+  if (adapterType === "claude_local") return "effort";
   if (adapterType === "opencode_local") return "variant";
   return null;
 }
@@ -123,7 +113,6 @@ export function mergeComposerRunSettings(
   if (settings.model) config.model = settings.model;
   const effortKey = composerEffortKey(adapterType);
   if (settings.effort && effortKey) config[effortKey] = settings.effort;
-  if (settings.fast && adapterType === "codex_local") config.fastMode = true;
   const useProjectWorkspace = reassigned ? undefined : previous?.useProjectWorkspace;
   return Object.keys(config).length || useProjectWorkspace !== undefined
     ? { ...(Object.keys(config).length ? { adapterConfig: config } : {}), ...(useProjectWorkspace !== undefined ? { useProjectWorkspace } : {}) }

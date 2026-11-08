@@ -353,24 +353,19 @@ describe("agent test-environment route", () => {
     return { id, environmentId, adapterConfig, envVars };
   }
 
-  it.each([false, true])("tests a saved native Cursor's explicit Legacy switch on the selected Computer (legacyPrompt=%s)", async legacyPrompt => {
-    const probes = await mockCursorSwitchProbes();
-    const probe = probes.legacy;
-    try {
-      const f = savedCursorSwitchFixture();
-      const config = { ...f.adapterConfig, ...(legacyPrompt ? { promptTemplate: "Legacy prompt" } : {}) };
-      const response = await request(await createApp()).post("/api/companies/company-1/adapters/paperclip_runner/test-environment")
-        .send({ agentId: f.id, runner: "legacy", environmentId: f.environmentId, adapterConfig: config });
-      expect(response.status, JSON.stringify(response.body)).toBe(200);
-      expect(probe).toHaveBeenCalledWith(expect.objectContaining({ environmentName: "Chosen Computer", executionTarget: null,
-        config: expect.objectContaining({ model: "caller-model", env: { CURSOR_API_KEY: "chosen-computer-key" },
-          ...(legacyPrompt ? { promptTemplate: "Legacy prompt" } : {}) }) }));
-      expect(probe.mock.calls[0][0].config).not.toHaveProperty("provider");
-      expect(mockSecretService.resolveEnvBindings).toHaveBeenCalledWith("company-1", f.envVars,
-        expect.objectContaining({ consumerType: "environment", consumerId: f.environmentId }));
-      expect(mockEnvironmentRuntime.acquireRunLease).not.toHaveBeenCalled();
-      expect(probes.native).not.toHaveBeenCalled();
-    } finally { probes.restore(); }
+  // The Legacy switch died with the cursor_cloud harness (8 Nov 2026):
+  // runner "legacy" now throws agent_runner_unavailable at selection, before
+  // any Computer credential or probe work runs. Both legacyPrompt rows share
+  // that rejection; the prompt template is never read.
+  it.each([false, true])("rejects a saved native Cursor's explicit Legacy switch now that the Legacy harness is removed (legacyPrompt=%s)", async legacyPrompt => {
+    const f = savedCursorSwitchFixture();
+    const config = { ...f.adapterConfig, ...(legacyPrompt ? { promptTemplate: "Legacy prompt" } : {}) };
+    const response = await request(await createApp()).post("/api/companies/company-1/adapters/paperclip_runner/test-environment")
+      .send({ agentId: f.id, runner: "legacy", environmentId: f.environmentId, adapterConfig: config });
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+    expect(response.body.details?.code ?? response.body.code).toBe("agent_runner_unavailable");
+    expect(mockSecretService.resolveEnvBindings).not.toHaveBeenCalled();
+    expect(mockEnvironmentRuntime.acquireRunLease).not.toHaveBeenCalled();
   });
 
   it("fails closed on a foreign Computer before credentials for an explicit Legacy switch", async () => {
@@ -390,22 +385,18 @@ describe("agent test-environment route", () => {
     } finally { probes.restore(); }
   });
 
-  it("keeps managed-only policy for a Legacy switch rather than testing its API controller", async () => {
-    const probes = await mockCursorSwitchProbes();
-    const probe = probes.legacy;
-    try {
-      const f = savedCursorSwitchFixture();
-      mockInstanceSettingsService.getExperimental.mockResolvedValue({ enableManagedSandboxOnly: true });
-      const response = await request(await createApp()).post("/api/companies/company-1/adapters/paperclip_runner/test-environment")
-        .send({ agentId: f.id, runner: "legacy", environmentId: f.environmentId, adapterConfig: f.adapterConfig });
-      expect(response.status, JSON.stringify(response.body)).toBe(200);
-      expect(response.body).toMatchObject({ status: "fail", checks: expect.arrayContaining([
-        expect.objectContaining({ code: "managed_sandbox_unavailable", level: "error" }),
-      ]) });
-      expect(probe).not.toHaveBeenCalled();
-      expect(mockEnvironmentRuntime.acquireRunLease).not.toHaveBeenCalled();
-      expect(probes.native).not.toHaveBeenCalled();
-    } finally { probes.restore(); }
+  // The Legacy switch died with the cursor_cloud harness (8 Nov 2026):
+  // runner "legacy" is rejected at selection before the managed-sandbox
+  // policy check ever runs, so there is no managed_sandbox_unavailable
+  // diagnostic for it anymore.
+  it("rejects a Legacy switch under managed-only policy now that the Legacy harness is removed", async () => {
+    const f = savedCursorSwitchFixture();
+    mockInstanceSettingsService.getExperimental.mockResolvedValue({ enableManagedSandboxOnly: true });
+    const response = await request(await createApp()).post("/api/companies/company-1/adapters/paperclip_runner/test-environment")
+      .send({ agentId: f.id, runner: "legacy", environmentId: f.environmentId, adapterConfig: f.adapterConfig });
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+    expect(response.body.details?.code ?? response.body.code).toBe("agent_runner_unavailable");
+    expect(mockEnvironmentRuntime.acquireRunLease).not.toHaveBeenCalled();
   });
 
   it("keeps an explicit Paperclip Cursor test API-only despite a selected Computer", async () => {
@@ -443,32 +434,15 @@ describe("agent test-environment route", () => {
     expect(mockEnvironmentService.findManagedSandboxEnvironment).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, "auto"] as const)("tests the prospective managed Cursor API default without converting saved Legacy agents (%s)", async runner => {
-    const { getServerAdapter } = await import("../adapters/index.js");
-    const native = getServerAdapter("paperclip_runner");
-    const probe = vi.spyOn(native, "testEnvironment").mockImplementation(async () => ({ adapterType: "paperclip_runner", status: "warn" as const, testedAt: new Date().toISOString(),
-      checks: [{ code: "cursor_cloud_account_ready", level: "info" as const, message: "Synthetic account probe; no prompt." }] }));
-    try {
-      const settings = { defaultEnvironmentId: null, experimental: { enableManagedSandboxOnly: true, enableNativeRunner: true } };
-      mockInstanceSettingsService.get.mockResolvedValue(settings);
-      mockInstanceSettingsService.getExperimental.mockResolvedValue(settings.experimental);
-      const adapterConfig = { model: "caller-model", repoUrl: "https://github.com/example/qualification", env: { CURSOR_API_KEY: "synthetic" } };
-      const app = await createApp();
-      const response = await request(app).post("/api/companies/company-1/adapters/cursor_cloud/test-environment").send({ runner, adapterConfig });
-      expect(response.status, JSON.stringify(response.body)).toBe(200);
-      expect(response.body).toMatchObject({ adapterType: "paperclip_runner", checks: [{ code: "cursor_cloud_account_ready" }] });
-      expect(probe).toHaveBeenCalledWith(expect.objectContaining({ executionTarget: null, environmentName: null,
-        config: expect.objectContaining({ provider: "cursor_cloud", model: "caller-model" }) }));
-      expect(mockEnvironmentService.findManagedSandboxEnvironment).not.toHaveBeenCalled();
-      expect(mockEnvironmentRuntime.acquireRunLease).not.toHaveBeenCalled();
-      const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-      mockAgentService.getById.mockResolvedValue({ id, companyId: "company-1", adapterType: "cursor_cloud", adapterConfig, defaultEnvironmentId: null });
-      const legacy = await request(app).post("/api/companies/company-1/adapters/cursor_cloud/test-environment").send({ agentId: id, adapterConfig });
-      expect(legacy.status).toBe(422);
-      expect(legacy.body.details?.code).toBe("managed_sandbox_unavailable");
-      expect(probe).toHaveBeenCalledOnce();
-    } finally { probe.mockRestore(); }
-  });
+  // The "prospective managed Cursor API default without converting saved Legacy
+  // agents" test lived here. It drove the cursor_cloud adapter route, which
+  // died with the cursor-cloud adapter (8 Nov 2026): the route now rejects
+  // cursor_cloud at assertKnownAdapterType. The prospective managed-default
+  // behavior it covered now lives on the paperclip_runner route and is
+  // covered by "tests the saved Cursor API controller…" above and "keeps an
+  // explicit Paperclip Cursor test API-only…" below. Deleted with the adapter
+  // deletion, 8 Nov 2026.
+
 
   it("accepts a managed Dot environment without allocating an idle sandbox", async () => {
     vi.stubEnv("PAPERCLIP_PUBLIC_URL", "https://paperclip.example");
@@ -753,25 +727,15 @@ describe("agent test-environment route", () => {
     expect(testEnvironmentSpy.mock.calls[0]?.[0].config.env).toEqual({ [key]: "probe-only-key" });
   });
 
-  it("maps the Hermes gateway probe key without passing it to persistence", async () => {
-    const { registerServerAdapter, getServerAdapter, unregisterServerAdapter } = await import("../adapters/index.js");
-    const previous = getServerAdapter("hermes_gateway");
-    unregisterServerAdapter("hermes_gateway");
-    registerServerAdapter({ ...externalAdapter, type: "hermes_gateway" });
-    try {
-      const app = await createApp();
-      const res = await request(app)
-        .post("/api/companies/company-1/adapters/hermes_gateway/test-environment")
-        .send({ adapterConfig: { apiBaseUrl: "https://hermes.example.com" }, testCredentials: { API_SERVER_KEY: "gateway-probe-key" } });
-      expect(res.status).toBe(200);
-      expect(mockSecretService.normalizeAdapterConfigForPersistence.mock.calls[0]?.[1]).toEqual({ apiBaseUrl: "https://hermes.example.com" });
-      expect(testEnvironmentSpy.mock.calls[0]?.[0].config.apiKey).toBe("gateway-probe-key");
-      expect(JSON.stringify(res.body)).not.toContain("gateway-probe-key");
-    } finally {
-      unregisterServerAdapter("hermes_gateway");
-      if (previous) registerServerAdapter(previous);
-    }
-  });
+  // The "Hermes gateway probe key" test lived here. It drove the
+  // hermes_gateway adapter route with a registered fake, but the route's
+  // runner selection now rejects the hermes_gateway harness with
+  // agent_runner_unavailable before any probe runs, so the probe-key mapping
+  // it guarded (API_SERVER_KEY -> config.apiKey) is unreachable. Generic
+  // probe-only credential behavior stays covered by the external_test
+  // "accepts %s as a probe-only credential" tests above. Deleted with the
+  // adapter deletion, 8 Nov 2026.
+
 
   // The managed-adoption verdict, all three ways. An api_key account is
   // re-verified against the provider's endpoint at adoption — the same check
@@ -1275,8 +1239,11 @@ describe("agent test-environment route", () => {
       mockPluginEnvironmentRequiresAgent.mockResolvedValueOnce(true);
       mockResolveNewAgentRunnerForCompany.mockResolvedValueOnce({ adapterType: "paperclip_runner", adapterConfig: { provider: "codex" } });
       const app = await createApp();
+      // codex_local died with its adapter (8 Nov 2026); the requested harness
+      // here is incidental — the guard under test runs after runner selection,
+      // which is mocked to paperclip_runner — so the route drives claude_local.
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/codex_local/test-environment")
+        .post("/api/companies/company-1/adapters/claude_local/test-environment")
         .send({ adapterConfig: {}, environmentId: pluginEnvironment.id });
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       expect(res.body).toMatchObject({ status: "warn", checks: [{ code: "environment_agent_required", level: "warn" }] });
@@ -1315,8 +1282,12 @@ describe("agent test-environment route", () => {
       mockPluginRunnerTaskDriver.mockResolvedValueOnce({ driverKey: "tasks" });
       mockResolveNewAgentRunnerForCompany.mockResolvedValueOnce({ adapterType: "paperclip_runner", adapterConfig });
       const app = await createApp();
+      // codex_local died with its adapter (8 Nov 2026); the requested harness
+      // here is incidental — the refusal under test runs after runner
+      // selection, which is mocked to paperclip_runner — so the route drives
+      // claude_local.
       const res = await request(app)
-        .post("/api/companies/company-1/adapters/codex_local/test-environment")
+        .post("/api/companies/company-1/adapters/claude_local/test-environment")
         .send({ adapterConfig: {}, environmentId: pluginEnvironment.id });
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       expect(res.body).toMatchObject({ adapterType: "paperclip_runner", status: "fail",

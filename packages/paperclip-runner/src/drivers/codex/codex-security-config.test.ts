@@ -54,8 +54,7 @@ describe("Codex security configuration", () => {
       const pathCommand = join(pathDirectory, "codex");
       const commandEnvironment = { PATH: pathDirectory };
       const issuer = join(root, "node_modules/@paperclipai/server/dist/vendor/paperclip-runner/drivers/codex/codex-command.js");
-      const adapter = join(root, "node_modules/@paperclipai/adapter-codex-local");
-      const bridge = join(adapter, "node_modules/@agentclientprotocol/codex-acp");
+      const bridge = join(root, "node_modules/@agentclientprotocol/codex-acp");
       const codex = join(bridge, "node_modules/@openai/codex");
       const executable = join(codex, "bin/codex.js");
       const platformName = "@openai/codex-" + process.platform + "-" + process.arch;
@@ -116,8 +115,6 @@ describe("Codex security configuration", () => {
         assert.throws(() => resolveCodexCommand(pathOnlyIssuer, commandEnvironment), /runtime unavailable/);
         mkdirSync(dirname(issuer), { recursive: true });
         mkdirSync(join(codex, "bin"), { recursive: true });
-        writeFileSync(join(adapter, "package.json"), JSON.stringify({ name: "@paperclipai/adapter-codex-local", exports: { "./server": "./server.js" } }));
-        writeFileSync(join(adapter, "server.js"), "");
         writeFileSync(join(bridge, "package.json"), JSON.stringify({ name: "@agentclientprotocol/codex-acp", version: "1.6.2" }));
         writeFileSync(join(codex, "package.json"), JSON.stringify(metadata));
         mkdirSync(vendor, { recursive: true });

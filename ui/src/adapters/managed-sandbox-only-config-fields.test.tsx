@@ -5,8 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClaudeLocalConfigFields, ClaudeLocalAdvancedFields } from "./claude-local/config-fields";
-import { CodexLocalConfigFields } from "./codex-local/config-fields";
-import { GeminiLocalConfigFields } from "./gemini-local/config-fields";
+import { CodexLocalConfigFields } from "./paperclip-runner/codex-config-fields";
 import type { AdapterConfigFieldsProps } from "./types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -152,31 +151,9 @@ describe("adapter config fields under the managed-sandbox-only policy", () => {
     expect(result.container.textContent).toContain("Fast mode");
   });
 
-  it("renders the Gemini execution engine and paths when the policy is off", () => {
-    const result = renderFields(GeminiLocalConfigFields, { adapterType: "gemini_local" });
-    roots.push(result.root);
-
-    const labels = fieldLabels(result.container);
-    expect(labels).toContain("Execution engine");
-    expect(labels).toContain("ACP server command");
-    expect(labels).toContain("ACP state directory");
-    expect(labels).toContain("Agent instructions file");
-  });
-
-  it("drops the Gemini execution engine and paths when the policy is on", () => {
-    const result = renderFields(GeminiLocalConfigFields, {
-      adapterType: "gemini_local",
-      managedSandboxOnly: true,
-      hideInstructionsFile: true,
-    });
-    roots.push(result.root);
-
-    const labels = fieldLabels(result.container);
-    expect(labels).not.toContain("Execution engine");
-    expect(labels).not.toContain("ACP server command");
-    expect(labels).not.toContain("ACP state directory");
-    expect(labels).not.toContain("Agent instructions file");
-    expect(choosePathButtons(result.container)).toHaveLength(0);
-    expect(labels).toContain("ACP session mode");
-  });
+  // The two Gemini tests lived here ("renders the Gemini execution engine
+  // and paths when the policy is off" / "drops the Gemini execution engine
+  // and paths when the policy is on"). The Gemini fields component died with
+  // the gemini adapter (no relocation). Deleted with the adapter deletion,
+  // 8 Nov 2026.
 });

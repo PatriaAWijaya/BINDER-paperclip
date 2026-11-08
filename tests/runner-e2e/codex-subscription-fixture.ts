@@ -1,6 +1,6 @@
 import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { resolveManagedCodexHomeDir } from "../../packages/adapters/codex-local/src/server/codex-home.js";
+import { resolveManagedCodexHomeDir } from "../../server/src/services/native-runtime/codex-auth-cache-helpers.js";
 
 /** Seed only an explicit subscription login in the disposable company's normal
  * production login slot. No provider config, sessions or operator plugins copy. */

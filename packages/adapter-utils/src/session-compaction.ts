@@ -38,15 +38,7 @@ const ADAPTER_MANAGED_SESSION_POLICY: SessionCompactionPolicy = {
 
 export const LEGACY_SESSIONED_ADAPTER_TYPES = new Set([
   "claude_local",
-  "codex_local",
-  "cursor_cloud",
-  "cursor",
-  "gemini_local",
-  "grok_local",
-  "hermes_local",
-  "kimi_local",
   "opencode_local",
-  "pi_local",
 ]);
 
 export const ADAPTER_SESSION_MANAGEMENT: Record<string, AdapterSessionManagement> = {
@@ -55,50 +47,10 @@ export const ADAPTER_SESSION_MANAGEMENT: Record<string, AdapterSessionManagement
     nativeContextManagement: "confirmed",
     defaultSessionCompaction: ADAPTER_MANAGED_SESSION_POLICY,
   },
-  codex_local: {
-    supportsSessionResume: true,
-    nativeContextManagement: "confirmed",
-    defaultSessionCompaction: ADAPTER_MANAGED_SESSION_POLICY,
-  },
-  cursor_cloud: {
-    supportsSessionResume: true,
-    nativeContextManagement: "unknown",
-    defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
-  },
-  cursor: {
-    supportsSessionResume: true,
-    nativeContextManagement: "unknown",
-    defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
-  },
-  gemini_local: {
-    supportsSessionResume: true,
-    nativeContextManagement: "unknown",
-    defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
-  },
-  grok_local: {
-    supportsSessionResume: true,
-    nativeContextManagement: "unknown",
-    defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
-  },
-  kimi_local: {
-    supportsSessionResume: true,
-    nativeContextManagement: "unknown",
-    defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
-  },
   opencode_local: {
     supportsSessionResume: true,
     nativeContextManagement: "unknown",
     defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
-  },
-  pi_local: {
-    supportsSessionResume: true,
-    nativeContextManagement: "unknown",
-    defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
-  },
-  hermes_local: {
-    supportsSessionResume: true,
-    nativeContextManagement: "confirmed",
-    defaultSessionCompaction: ADAPTER_MANAGED_SESSION_POLICY,
   },
 };
 

@@ -77,14 +77,14 @@ import { logActivity } from "./activity-log.js";
 //
 // The lock alone still lets a queued write commit a directory the cleanup
 // already removed, once the cleanup's own lock-holding section runs first and
-// frees the lock. `assertAccountHomeCacheDirStillValid` closes that window: a
+// frees the lock. `assertAccountHomeDirStillValid` closes that window: a
 // create or a rotate calls it inside the same lock, right before it commits,
 // so a value that named a directory the cleanup just deleted fails instead of
 // writing a secret that points at nothing.
 import {
-  assertAccountHomeCacheDirStillValid,
+  assertAccountHomeDirStillValid,
   withAccountHomeSecretMutationLock,
-} from "@paperclipai/adapter-codex-local/server";
+} from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
 
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const AGENT_ACCESS_CONFIG_PATH_PREFIX = "access.";
@@ -2068,7 +2068,7 @@ export function secretService(db: Db | DbTransaction) {
     actor?: { userId?: string | null; agentId?: string | null },
   ) {
     return withAccountHomeSecretMutationLock(undefined, companyId, async () => {
-      await assertAccountHomeCacheDirStillValid(undefined, companyId, input.value);
+      await assertAccountHomeDirStillValid(undefined, companyId, input.value);
       return createManagedLocalSecretUnlocked(companyId, input, actor);
     });
   }
@@ -3528,7 +3528,7 @@ export function secretService(db: Db | DbTransaction) {
     },
     async set(scope: InstanceSecretScope, key: string, value: string | null) {
       return withAccountHomeSecretMutationLock(undefined, scope.companyId, async () => {
-        if (value) await assertAccountHomeCacheDirStillValid(undefined, scope.companyId, value);
+        if (value) await assertAccountHomeDirStillValid(undefined, scope.companyId, value);
         const normalizedKey = normalizeSecretKey(key);
         const [existing] = await db.select().from(companySecrets).where(and(eq(companySecrets.companyId, scope.companyId),
           eq(companySecrets.scope, "instance"), scope.agentId !== undefined ? eq(companySecrets.ownerAgentId, scope.agentId) : eq(companySecrets.ownerProjectId, scope.projectId),
@@ -4669,11 +4669,11 @@ export function secretService(db: Db | DbTransaction) {
         // already removed the directory this value names. Check the
         // directory's existence inside the same lock, right before the
         // write, so that order fails instead of committing a dangling path.
-        // `assertAccountHomeCacheDirStillValid` is a no-op for a value that is
+        // `assertAccountHomeDirStillValid` is a no-op for a value that is
         // not under the account-home cache root, so this never rejects an
         // unrelated secret write.
         if (input.value) {
-          await assertAccountHomeCacheDirStillValid(undefined, companyId, input.value);
+          await assertAccountHomeDirStillValid(undefined, companyId, input.value);
         }
         return createSecretUnlocked(companyId, input, actor);
       });
@@ -4707,7 +4707,7 @@ export function secretService(db: Db | DbTransaction) {
         // behind an account-home cleanup cannot commit a directory the
         // cleanup already removed.
         if (input.value) {
-          await assertAccountHomeCacheDirStillValid(undefined, preCheckSecret.companyId, input.value);
+          await assertAccountHomeDirStillValid(undefined, preCheckSecret.companyId, input.value);
         }
         return rotateUnlocked(secretId, input, actor);
       });

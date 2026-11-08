@@ -226,16 +226,21 @@ describe("adapter routes", () => {
     [{ driver: "ssh", platform: "linux", architecture: "x64" }, "paperclip"],
     [{ driver: "ssh", platform: "darwin", architecture: "arm64" }, "paperclip"],
     [{ driver: "ssh", platform: "darwin", architecture: "x64" }, "paperclip"],
-    [{ driver: "ssh", platform: "linux", architecture: "arm64" }, "paperclip"],
+    [{ driver: "ssh", platform: "linux", architecture: "arm64" }, "legacy"],
     [{ driver: "ssh", platform: "linux", architecture: "arm" }, "legacy"],
     [{ driver: "local", platform: "win32", architecture: "x64" }, "legacy"],
-    [{ driver: "sandbox", platform: "linux", architecture: "arm64", libc: "glibc", glibcVersion: "2.39" }, "paperclip"],
+    [{ driver: "sandbox", platform: "linux", architecture: "arm64", libc: "glibc", glibcVersion: "2.39" }, "legacy"],
   ])("projects the selected environment once for the whole adapter inventory (%s)", async (target, defaultRunner) => {
     const resolveRunnerTarget = vi.fn(async () => target);
     const response = await request(createApp({}, { resolveRunnerTarget })).get("/api/adapters?companyId=company-1&environmentId=selected");
     expect(response.status).toBe(200);
     expect(resolveRunnerTarget).toHaveBeenCalledExactlyOnceWith("company-1", "selected");
-    expect(response.body.find((adapter: any) => adapter.type === "codex_local")).toMatchObject({ defaultRunner });
+    // The runner-capable example is now `opencode_local`: the Codex CLI entry
+    // died with the adapter deletion, and the OpenCode CLI is the remaining
+    // runner harness whose default follows the target (paperclip where the
+    // runner supports the platform, legacy elsewhere). Unlike the Codex CLI,
+    // the OpenCode CLI ships no linux/arm64 build, so those rows are legacy.
+    expect(response.body.find((adapter: any) => adapter.type === "opencode_local")).toMatchObject({ defaultRunner });
     expect(response.body.find((adapter: any) => adapter.type === "claude_local")).toMatchObject({ defaultRunner: "legacy" });
   });
 
@@ -244,7 +249,7 @@ describe("adapter routes", () => {
     const response = await request(createApp({}, { resolveRunnerTarget })).get("/api/adapters?companyId=company-1");
     expect(response.status).toBe(200);
     expect(resolveRunnerTarget).toHaveBeenCalledExactlyOnceWith("company-1", undefined);
-    expect(response.body.find((adapter: any) => adapter.type === "codex_local")).toMatchObject({ defaultRunner: "legacy" });
+    expect(response.body.find((adapter: any) => adapter.type === "opencode_local")).toMatchObject({ defaultRunner: "legacy" });
   });
 
   it("keeps unscoped inventory independent of company target discovery", async () => {
@@ -261,27 +266,37 @@ describe("adapter routes", () => {
     expect(resolveRunnerTarget).not.toHaveBeenCalled();
   });
 
-  it("keeps Cursor API discovery available without granting local support when the implicit managed Computer is unavailable", async () => {
+  it("keeps the adapter inventory available without granting local support when the implicit managed Computer is unavailable", async () => {
+    // The `cursor_cloud` entry died with the adapter deletion: Cursor API
+    // discovery no longer surfaces as its own inventory entry. What remains
+    // observable is the route behavior: the catalog stays visible (200, not
+    // 422) when only the implicit managed Computer is unavailable, and no
+    // entry grants local execution support.
     const unavailable = unprocessable("Managed Computer unavailable", { code: "managed_sandbox_unavailable" });
     const app = createApp({}, { resolveRunnerTarget: async () => { throw unavailable; } });
     const response = await request(app).get("/api/adapters?companyId=company-1");
     expect(response.status).toBe(200);
-    expect(response.body.find((adapter: any) => adapter.type === "cursor_cloud")).toMatchObject({ supportedRunners: ["paperclip"], defaultRunner: "paperclip" });
-    expect(response.body.find((adapter: any) => adapter.type === "codex_local").supportedRunners).toEqual([]);
+    expect(response.body.find((adapter: any) => adapter.type === "cursor_cloud")).toBeUndefined();
+    expect(response.body.find((adapter: any) => adapter.type === "opencode_local").supportedRunners).toEqual([]);
+    expect(response.body.every((adapter: any) => adapter.supportedRunners.length === 0)).toBe(true);
     const explicit = await request(app).get("/api/adapters?companyId=company-1&environmentId=selected");
     expect(explicit.status).toBe(422);
     const foreign = await request(createApp({}, { resolveRunnerTarget: async () => { throw forbidden("Foreign Computer", { code: "environment_company_mismatch" }); } })).get("/api/adapters?companyId=company-1");
     expect(foreign.status).toBe(403);
   });
 
-  it("does not offer Cursor execution under Kubernetes-only policy, including the unavailable managed Computer fallback", async () => {
+  it("offers no Paperclip runner under Kubernetes-only policy, including the unavailable managed Computer fallback", async () => {
+    // The `cursor_cloud` entry died with the adapter deletion, so the
+    // Kubernetes-only policy is now observed on the remaining inventory:
+    // no entry offers the Paperclip runner (defaultRunner stays legacy).
     for (const resolveRunnerTarget of [
       async () => ({ driver: "sandbox", executionMode: "kubernetes" as const }),
       async () => { throw unprocessable("Managed Computer unavailable", { code: "managed_sandbox_unavailable", executionMode: "kubernetes" }); },
     ]) {
       const response = await request(createApp({}, { resolveRunnerTarget })).get("/api/adapters?companyId=company-1");
       expect(response.status).toBe(200);
-      expect(response.body.find((adapter: any) => adapter.type === "cursor_cloud").supportedRunners).toEqual([]);
+      expect(response.body.find((adapter: any) => adapter.type === "cursor_cloud")).toBeUndefined();
+      expect(response.body.every((adapter: any) => adapter.defaultRunner === "legacy")).toBe(true);
     }
   });
 
@@ -307,25 +322,19 @@ describe("adapter routes", () => {
     const res = await request(app).get("/api/adapters");
     expect(res.status).toBe(200);
 
-    // codex_local has instructions bundle + skills + jwt, no materialized skills
-    // (claude_local is overridden by beforeEach, so check codex_local instead)
-    const codexLocal = res.body.find((a: any) => a.type === "codex_local");
-    expect(codexLocal).toBeDefined();
-    expect(codexLocal.capabilities).toMatchObject({
+    // opencode_local has instructions bundle + skills + jwt, with materialized
+    // skills and no ACP (claude_local is overridden by beforeEach, so check
+    // opencode_local instead). The Codex ACP entry died with the adapter.
+    const openCodeLocal = res.body.find((a: any) => a.type === "opencode_local");
+    expect(openCodeLocal).toBeDefined();
+    expect(openCodeLocal.capabilities).toMatchObject({
       supportsInstructionsBundle: true,
       supportsSkills: true,
       supportsLocalAgentJwt: true,
-      requiresMaterializedRuntimeSkills: false,
-      supportsAcp: true,
+      requiresMaterializedRuntimeSkills: true,
+      supportsAcp: false,
     });
-    expect(codexLocal.acp).toMatchObject({
-      agentId: "codex",
-      skillsMode: "ephemeral",
-      prerequisites: {
-        nodeRange: ">=24.11.0",
-        packages: ["@agentclientprotocol/codex-acp"],
-      },
-    });
+    expect(openCodeLocal.acp).toBeUndefined();
 
     // process adapter should have no local capabilities
     const processAdapter = res.body.find((a: any) => a.type === "process");
@@ -338,80 +347,49 @@ describe("adapter routes", () => {
       supportsAcp: false,
     });
 
-    // cursor adapter should require materialized runtime skills
-    const cursorAdapter = res.body.find((a: any) => a.type === "cursor");
-    expect(cursorAdapter).toBeDefined();
-    expect(cursorAdapter.capabilities.requiresMaterializedRuntimeSkills).toBe(true);
-    expect(cursorAdapter.capabilities.supportsInstructionsBundle).toBe(true);
-    expect(cursorAdapter.capabilities.supportsAcp).toBe(false);
-
-    const geminiAdapter = res.body.find((a: any) => a.type === "gemini_local");
-    expect(geminiAdapter).toBeDefined();
-    expect(geminiAdapter.capabilities).toMatchObject({
+    // paperclip_runner has instructions bundle + skills, no local JWT, no
+    // materialized skills, no ACP.
+    const runnerAdapter = res.body.find((a: any) => a.type === "paperclip_runner");
+    expect(runnerAdapter).toBeDefined();
+    expect(runnerAdapter.capabilities).toMatchObject({
       supportsInstructionsBundle: true,
       supportsSkills: true,
-      supportsLocalAgentJwt: true,
-      requiresMaterializedRuntimeSkills: true,
-      supportsAcp: true,
-    });
-    expect(geminiAdapter.acp).toMatchObject({
-      agentId: "gemini",
-      skillsMode: "ephemeral",
-      prerequisites: {
-        nodeRange: ">=24.11.0",
-        packages: ["@google/gemini-cli"],
-      },
-    });
-
-    const grokAdapter = res.body.find((a: any) => a.type === "grok_local");
-    expect(grokAdapter).toBeDefined();
-    expect(grokAdapter.capabilities).toMatchObject({
-      supportsInstructionsBundle: true,
-      supportsSkills: true,
-      supportsLocalAgentJwt: true,
-      requiresMaterializedRuntimeSkills: true,
-      supportsAcp: false,
-    });
-
-    const kimiAdapter = res.body.find((a: any) => a.type === "kimi_local");
-    expect(kimiAdapter).toBeDefined();
-    expect(kimiAdapter.capabilities).toMatchObject({
-      supportsInstructionsBundle: true,
-      supportsSkills: true,
-      supportsLocalAgentJwt: true,
-      requiresMaterializedRuntimeSkills: true,
-      supportsAcp: true,
-    });
-    expect(kimiAdapter.acp).toMatchObject({
-      agentId: "kimi",
-      skillsMode: "ephemeral",
-      prerequisites: {
-        nodeRange: ">=20.0.0",
-        packages: ["@moonshot-ai/kimi-code"],
-      },
-    });
-
-    const hermesLocal = res.body.find((a: any) => a.type === "hermes_local");
-    expect(hermesLocal).toBeDefined();
-    expect(hermesLocal.source).toBe("builtin");
-    expect(hermesLocal.capabilities).toMatchObject({
-      supportsInstructionsBundle: true,
-      supportsSkills: true,
-      supportsLocalAgentJwt: true,
+      supportsLocalAgentJwt: false,
       requiresMaterializedRuntimeSkills: false,
       supportsAcp: false,
     });
+    expect(runnerAdapter.acp).toBeUndefined();
 
-    const hermesGateway = res.body.find((a: any) => a.type === "hermes_gateway");
-    expect(hermesGateway).toBeDefined();
-    expect(hermesGateway.source).toBe("builtin");
-    expect(hermesGateway.capabilities).toMatchObject({
+    // http adapter has no local capabilities at all.
+    const httpAdapter = res.body.find((a: any) => a.type === "http");
+    expect(httpAdapter).toBeDefined();
+    expect(httpAdapter.capabilities).toMatchObject({
       supportsInstructionsBundle: false,
       supportsSkills: false,
       supportsLocalAgentJwt: false,
       requiresMaterializedRuntimeSkills: false,
       supportsAcp: false,
     });
+
+    // acpx_local remains registered only as a tombstone for legacy rows.
+    const acpxLocal = res.body.find((a: any) => a.type === "acpx_local");
+    expect(acpxLocal).toBeDefined();
+    expect(acpxLocal.source).toBe("builtin");
+    expect(acpxLocal.capabilities).toMatchObject({
+      supportsInstructionsBundle: false,
+      supportsSkills: false,
+      supportsLocalAgentJwt: false,
+      requiresMaterializedRuntimeSkills: false,
+      supportsAcp: false,
+    });
+
+    // The cursor, gemini_local, grok_local, kimi_local, hermes_local, and
+    // hermes_gateway blocks lived here. Deleted with the adapter deletion,
+    // 8 Nov 2026: those adapters no longer exist in the inventory, and their
+    // capability profiles (including the Codex/Gemini/Kimi ACP entries) died
+    // with them. `claude_local` is deliberately not asserted here either:
+    // beforeEach overrides it with a minimal module, so its inventory
+    // capabilities reflect the override, not the real adapter.
   });
 
   it("GET /api/adapters derives supportsSkills from listSkills/syncSkills presence", async () => {
@@ -425,10 +403,10 @@ describe("adapter routes", () => {
     expect(httpAdapter).toBeDefined();
     expect(httpAdapter.capabilities.supportsSkills).toBe(false);
 
-    // codex_local has listSkills/syncSkills
-    const codexLocal = res.body.find((a: any) => a.type === "codex_local");
-    expect(codexLocal).toBeDefined();
-    expect(codexLocal.capabilities.supportsSkills).toBe(true);
+    // opencode_local has listSkills/syncSkills
+    const openCodeLocal = res.body.find((a: any) => a.type === "opencode_local");
+    expect(openCodeLocal).toBeDefined();
+    expect(openCodeLocal.capabilities.supportsSkills).toBe(true);
 
     // acpx_local remains registered only as a tombstone for legacy rows.
     const acpxLocal = res.body.find((a: any) => a.type === "acpx_local");
@@ -558,85 +536,11 @@ describe("adapter routes", () => {
     );
   });
 
-  it("serves the built-in codex_local ACP engine config schema", async () => {
-    const app = createApp();
-
-    const res = await request(app).get("/api/adapters/codex_local/config-schema");
-
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "engine",
-          default: "auto",
-          options: expect.arrayContaining([
-            expect.objectContaining({ value: "auto" }),
-            expect.objectContaining({ value: "cli" }),
-            expect.objectContaining({ value: "acp" }),
-          ]),
-        }),
-        expect.objectContaining({
-          key: "agentCommand",
-          meta: { visibleWhen: { key: "engine", values: ["acp"] } },
-        }),
-        expect.objectContaining({
-          key: "warmHandleIdleMs",
-          default: 0,
-        }),
-      ]),
-    );
-  });
-
-  it("serves the built-in gemini_local ACP engine config schema", async () => {
-    const app = createApp();
-
-    const res = await request(app).get("/api/adapters/gemini_local/config-schema");
-
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "engine",
-          default: "auto",
-          options: expect.arrayContaining([
-            expect.objectContaining({ value: "auto" }),
-            expect.objectContaining({ value: "cli" }),
-            expect.objectContaining({ value: "acp" }),
-          ]),
-        }),
-        expect.objectContaining({
-          key: "agentCommand",
-          meta: { visibleWhen: { key: "engine", values: ["acp"] } },
-        }),
-        expect.objectContaining({
-          key: "warmHandleIdleMs",
-          default: 0,
-        }),
-      ]),
-    );
-  });
-
-  it("serves built-in Hermes config schemas", async () => {
-    const app = createApp();
-
-    const local = await request(app).get("/api/adapters/hermes_local/config-schema");
-    expect(local.status, JSON.stringify(local.body)).toBe(200);
-    expect(local.body.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ key: "provider" }),
-        expect.objectContaining({ key: "timeoutSec" }),
-      ]),
-    );
-
-    const gateway = await request(app).get("/api/adapters/hermes_gateway/config-schema");
-    expect(gateway.status, JSON.stringify(gateway.body)).toBe(200);
-    expect(gateway.body.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ key: "apiBaseUrl", required: true }),
-        expect.objectContaining({ key: "apiKey", required: true }),
-      ]),
-    );
-  });
+  // Three builtin config-schema tests lived here (codex_local, gemini_local,
+  // hermes_local + hermes_gateway). Their adapters have no registry entry
+  // anymore, so the route no longer serves their schemas. The kept schemas
+  // (claude_local, Paperclip Runner, acpx tombstone) are covered by the
+  // neighbouring tests. Deleted with the adapter deletion, 8 Nov 2026.
 
   it("GET /api/adapters lists acpx_local only as a model-less tombstone", async () => {
     const app = createApp();
@@ -704,52 +608,55 @@ describe("adapter routes", () => {
   });
 
   it("POST /api/adapters/install allows an external adapter to override a builtin type", async () => {
-    const builtin = findServerAdapter("codex_local");
+    // The overridden builtin is `opencode_local`: `codex_local` died with the
+    // adapter deletion, and `claude_local` is overridden by beforeEach.
+    const builtin = findServerAdapter("opencode_local");
     expect(builtin).not.toBeNull();
 
     const externalModule: ServerAdapterModule = {
-      type: "codex_local",
+      type: "opencode_local",
       execute: async () => ({ exitCode: 0, signal: null, timedOut: false }),
       testEnvironment: async () => ({
-        adapterType: "codex_local",
+        adapterType: "opencode_local",
         status: "pass",
         checks: [],
         testedAt: new Date(0).toISOString(),
       }),
-      models: [{ id: "plugin-codex", label: "Plugin Codex" }],
+      models: [{ id: "plugin-opencode", label: "Plugin OpenCode" }],
     };
     mockPluginLoader.loadExternalAdapterPackage.mockResolvedValue(externalModule);
 
     const app = createApp({ isInstanceAdmin: true });
     const res = await request(app)
       .post("/api/adapters/install")
-      .send({ packageName: "/tmp/fake-codex-override", isLocalPath: true });
+      .send({ packageName: "/tmp/fake-opencode-override", isLocalPath: true });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.type).toBe("codex_local");
-    const registeredOverride = findServerAdapter("codex_local");
+    expect(res.body.type).toBe("opencode_local");
+    const registeredOverride = findServerAdapter("opencode_local");
     expect(registeredOverride).toMatchObject({
-      type: "codex_local",
-      models: [{ id: "plugin-codex", label: "Plugin Codex" }],
+      type: "opencode_local",
+      models: [{ id: "plugin-opencode", label: "Plugin OpenCode" }],
     });
 
-    setOverridePaused("codex_local", true);
-    expect(findActiveServerAdapter("codex_local")).toBe(builtin);
+    setOverridePaused("opencode_local", true);
+    expect(findActiveServerAdapter("opencode_local")).toBe(builtin);
 
     mockAdapterPluginStore.getAdapterPluginByType.mockReturnValue({
-      type: "codex_local",
+      type: "opencode_local",
       packageName: undefined,
-      localPath: "/tmp/fake-codex-override",
+      localPath: "/tmp/fake-opencode-override",
       installedAt: new Date(0).toISOString(),
     });
     mockAdapterPluginStore.removeAdapterPlugin.mockReturnValue(true);
 
-    const removed = await request(app).delete("/api/adapters/codex_local");
+    const removed = await request(app).delete("/api/adapters/opencode_local");
     expect(removed.status, JSON.stringify(removed.body)).toBe(200);
-    expect(removed.body).toMatchObject({ type: "codex_local", removed: true });
+    expect(removed.body).toMatchObject({ type: "opencode_local", removed: true });
 
-    unregisterServerAdapter("codex_local");
-    expect(findServerAdapter("codex_local")).toBe(builtin);
-    setOverridePaused("codex_local", false);
+    unregisterServerAdapter("opencode_local");
+    expect(findServerAdapter("opencode_local")).toBe(builtin);
+    setOverridePaused("opencode_local", false);
   });
+
 });

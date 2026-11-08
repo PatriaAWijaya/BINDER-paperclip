@@ -7,7 +7,8 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { MockInstance } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
-import { resolveCodexAuthCacheDir, withAccountHomeSecretMutationLock } from "@paperclipai/adapter-codex-local/server";
+import { resolveCodexAuthCacheDir } from "../services/native-runtime/codex-auth-cache-helpers.js";
+import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
 import {
   activityLog,
   agents,

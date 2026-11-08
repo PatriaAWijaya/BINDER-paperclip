@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { models as claudeFallbackModels } from "@paperclipai/adapter-claude-local";
 import { resetClaudeModelsCacheForTests } from "@paperclipai/adapter-claude-local/server";
-import { models as codexFallbackModels } from "@paperclipai/adapter-codex-local";
-import { models as cursorFallbackModels } from "@paperclipai/adapter-cursor-local";
+import { models as codexFallbackModels } from "@paperclipai/shared";
+import { cursorModels as cursorFallbackModels } from "@paperclipai/shared/cursor-cli-models";
 import { models as opencodeFallbackModels } from "@paperclipai/adapter-opencode-local";
 import { resetOpenCodeModelsCacheForTests } from "@paperclipai/adapter-opencode-local/server";
 import { listAdapterModels, listServerAdapters, refreshAdapterModels, registerServerAdapter, unregisterServerAdapter } from "../adapters/index.js";
-import { resetCodexModelsCacheForTests } from "../adapters/codex-models.js";
-import { resetCursorModelsCacheForTests, setCursorModelsRunnerForTests } from "../adapters/cursor-models.js";
 
 vi.mock("acpx/runtime", () => ({
   createAcpRuntime: vi.fn(),
@@ -25,9 +23,6 @@ describe("adapter model listing", () => {
     delete process.env.CLAUDE_CODE_USE_BEDROCK;
     delete process.env.PAPERCLIP_OPENCODE_COMMAND;
     resetClaudeModelsCacheForTests();
-    resetCodexModelsCacheForTests();
-    resetCursorModelsCacheForTests();
-    setCursorModelsRunnerForTests(null);
     resetOpenCodeModelsCacheForTests();
     vi.restoreAllMocks();
   });
@@ -198,7 +193,8 @@ describe("adapter model listing", () => {
   });
 
   it("includes current Cursor fallbacks when runtime discovery is unavailable", async () => {
-    setCursorModelsRunnerForTests(() => ({ status: 1, stdout: "", stderr: "", hasError: true }));
+    // Runtime discovery died with the cursor adapter; the static catalog is
+    // the fallback now.
     const models = await listAdapterModels("cursor");
     expect(models.map((model) => model.id)).toEqual(expect.arrayContaining([
       "composer-2.5", "claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5",
@@ -252,11 +248,24 @@ describe("adapter model listing", () => {
   });
 
   it("uses a custom Codex adapter's model and refresh hooks", async () => {
-    const builtin = listServerAdapters().find((adapter) => adapter.type === "codex_local")!;
+    // codex_local has no registry entry anymore (the adapter was deleted),
+    // so the custom adapter is registered explicitly instead of spreading a
+    // builtin def.
     const customModels = [{ id: "plugin-codex", label: "Plugin Codex" }];
     const listModels = vi.fn(async () => customModels);
     const refreshModels = vi.fn(async () => customModels);
-    registerServerAdapter({ ...builtin, models: [], listModels, refreshModels });
+    registerServerAdapter({
+      type: "codex_local",
+      models: [],
+      listModels,
+      refreshModels,
+      execute: async () => {
+        throw new Error("not used");
+      },
+      testEnvironment: async () => {
+        throw new Error("not used");
+      },
+    });
     try {
       await expect(listAdapterModels("codex_local")).resolves.toEqual(customModels);
       await expect(refreshAdapterModels("codex_local")).resolves.toEqual(customModels);
@@ -279,13 +288,8 @@ describe("adapter model listing", () => {
 
 
   it("returns cursor fallback models when CLI discovery is unavailable", async () => {
-    setCursorModelsRunnerForTests(() => ({
-      status: null,
-      stdout: "",
-      stderr: "",
-      hasError: true,
-    }));
-
+    // CLI discovery died with the cursor adapter; the static catalog is the
+    // fallback now.
     const models = await listAdapterModels("cursor");
     expect(models).toEqual(cursorFallbackModels);
   });
@@ -299,24 +303,12 @@ describe("adapter model listing", () => {
     expect(models.map((model) => model.id)).toEqual(expect.arrayContaining(["openai/gpt-6-astra", "openai/gpt-6.1-sol", "openai/gpt-6-sol", "openai/gpt-6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "anthropic/claude-opus-5-5", "anthropic/claude-opus-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5", "anthropic/claude-sonnet-5", "google/gemini-3.8-flash", "xai/grok-4.7"]));
   });
 
-  it("loads cursor models dynamically and caches them", async () => {
-    const runner = vi.fn(() => ({
-      status: 0,
-      stdout: "Available models: auto, composer-1.5, gpt-5.3-codex-high, sonnet-4.6",
-      stderr: "",
-      hasError: false,
-    }));
-    setCursorModelsRunnerForTests(runner);
-
-    const first = await listAdapterModels("cursor");
-    const second = await listAdapterModels("cursor");
-
-    expect(runner).toHaveBeenCalledTimes(1);
-    expect(first).toEqual(second);
-    expect(first.some((model) => model.id === "auto")).toBe(true);
-    expect(first.some((model) => model.id === "gpt-5.3-codex-high")).toBe(true);
-    expect(first.some((model) => model.id === "composer-1")).toBe(true);
-  });
+  // The "loads cursor models dynamically and caches them" test lived here.
+  // It exercised the cursor adapter's CLI discovery (setCursorModelsRunner-
+  // ForTests + listAdapterModels("cursor") with a mocked runner), which died
+  // with server/src/adapters/cursor-models.ts. The static cursor catalog is
+  // covered by the two fallback tests above. Deleted with the adapter
+  // deletion, 8 Nov 2026.
 
   describe("PAPERCLIP_ADAPTER_MODELS declared models", () => {
     afterEach(() => {

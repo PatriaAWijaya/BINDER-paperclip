@@ -11,7 +11,7 @@ import { conflict, notFound, unprocessable } from "../errors.js";
 import { withAccountingTransaction } from "./accounting-transaction.js";
 import { logActivity } from "./activity-log.js";
 import { secretService } from "./secrets.js";
-import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-codex-local/server";
+import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
 
 type Row = typeof companyObservability.$inferSelect;
 const target = { targetType: "system" as const, targetId: "company-observability" };

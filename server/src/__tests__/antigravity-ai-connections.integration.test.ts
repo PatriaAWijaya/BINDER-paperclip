@@ -15,7 +15,8 @@ import { aiConnectionService } from "../services/ai-connections.js";
 import { managedAiSessionFingerprintConfig, prepareManagedAiRuntime, withManagedAiProbe } from "../services/ai-connection-runtime.js";
 import { secretService } from "../services/secrets.js";
 import { quotaCredentialHash, quotaCredentialRecovery, quotaCredentialRecoveryPath } from "../services/quota-credential-recovery.js";
-import * as codexAdapter from "@paperclipai/adapter-codex-local/server";
+import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
+import * as accountHomeSecretMutationLock from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
 import * as workspaceLocks from "@paperclipai/adapter-utils/workspace-restore-merge";
 import { reconcileRetainedGoogleCleanup, retainGoogleCredentialCleanup } from "../services/retained-google-credential-cleanup.js";
 
@@ -311,10 +312,10 @@ describeDatabase("Google AI connection authority with real PostgreSQL", () => {
     const cleanup = async () => { entered(); await permitCleanup; await runtime.cleanup(); };
     retainGoogleCredentialCleanup({ scope, cleanup, retired: Promise.resolve() });
     await cleanupEntered;
-    const originalLock = codexAdapter.withAccountHomeSecretMutationLock;
+    const originalLock = withAccountHomeSecretMutationLock;
     const originalDirectoryLock = workspaceLocks.withDirectoryMergeLock;
     let requestedLock = false;
-    const lock = vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock").mockImplementation((env, company, callback) => {
+    const lock = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock").mockImplementation((env, company, callback) => {
       if (requestedLock) return originalLock(env, company, callback);
       requestedLock = true;
       return originalLock(env, company, async () => { lockEntered(); return callback(); });
@@ -348,7 +349,7 @@ describeDatabase("Google AI connection authority with real PostgreSQL", () => {
     const retired = new Promise<void>(resolve => { retire = resolve; });
     const cleanup = vi.fn(async () => {});
     retainGoogleCredentialCleanup({ scope, cleanup, retired });
-    const lock = vi.spyOn(codexAdapter, "withAccountHomeSecretMutationLock");
+    const lock = vi.spyOn(accountHomeSecretMutationLock, "withAccountHomeSecretMutationLock");
     try {
       await expect(f.service.runtimeCredential(f.selection)).resolves.toBe(f.credential);
       expect(lock).not.toHaveBeenCalled();
@@ -368,11 +369,11 @@ describeDatabase("Google AI connection authority with real PostgreSQL", () => {
       originalDirectoryLock(directory, callback, env, operation, 100));
     retainGoogleCredentialCleanup({ scope, retired, cleanup: async () => {
       entered();
-      try { await codexAdapter.withAccountHomeSecretMutationLock(undefined, f.companyId, async () => { finished = true; }); }
+      try { await withAccountHomeSecretMutationLock(undefined, f.companyId, async () => { finished = true; }); }
       catch (error) { failedLock = true; throw error; }
     } });
     try {
-      await codexAdapter.withAccountHomeSecretMutationLock(undefined, f.companyId, async () => {
+      await withAccountHomeSecretMutationLock(undefined, f.companyId, async () => {
         retire(); await cleanupEntered;
         await expect(f.service.runtimeCredential(f.selection)).resolves.toBe(f.credential);
         expect(failedLock).toBe(false);

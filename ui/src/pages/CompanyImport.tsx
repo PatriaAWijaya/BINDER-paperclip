@@ -43,7 +43,7 @@ import { getAdapterLabel } from "../adapters/adapter-display-registry";
 import { defaultCreateValues } from "../components/agent-config-defaults";
 import { getUIAdapter, listUIAdapters } from "../adapters";
 import { isPaperclipRunnerProvider, PAPERCLIP_RUNNER_PERMISSION_CAPABILITIES, type CreateConfigValues } from "@paperclipai/adapter-utils";
-import { resolveCodexLocalCliPolicy } from "@paperclipai/adapter-codex-local";
+import { resolveCodexLocalCliPolicy } from "@paperclipai/shared";
 import {
   type FileTreeNode,
   type FrontmatterData,

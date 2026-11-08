@@ -279,7 +279,7 @@ function preparePreviewFixture(fixture) {
   const { fixtureDir } = fixture;
   // Step 2 copies the skills tree into these package dirs.
   mkdirSync(join(fixtureDir, "skills"), { recursive: true });
-  for (const dir of ["server", "packages/adapters/claude-local", "packages/adapters/codex-local"]) {
+  for (const dir of ["server", "packages/adapters/claude-local", "packages/adapters/opencode-local"]) {
     mkdirSync(join(fixtureDir, dir), { recursive: true });
   }
   // Step 2 build helpers that live outside the pnpm stub.

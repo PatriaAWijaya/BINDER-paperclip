@@ -842,8 +842,9 @@ function resolveManagedCodexApiKeyHomeDir(companyId: string, agentId: string): s
 }
 
 // Mirrors `resolveManagedGrokHomeDir` in
-// `packages/adapters/grok-local/src/server/grok-home.ts` — this package
-// cannot import that adapter package (it would invert the dependency
+// `server/src/services/native-runtime/grok-home.ts` (relocated there from
+// the deleted `@paperclipai/adapter-grok-local` package) — this package
+// cannot import the server module (it would invert the dependency
 // direction), so the path scheme is duplicated here, the same way
 // `resolveManagedCodexHomeDir` above duplicates the Codex adapter's own
 // helper.

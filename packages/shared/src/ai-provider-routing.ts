@@ -110,11 +110,10 @@ export function isAiRoutingCompatible(
       "codex_local",
       "opencode_local",
       "pi_local",
-      "hermes_local",
     ].includes(harness);
   if (route.protocol === "responses") return harness === "codex_local";
   if (route.protocol === "messages") return harness === "claude_local";
-  return ["opencode_local", "hermes_local"].includes(harness);
+  return ["opencode_local"].includes(harness);
 }
 export function aiRoutingBaseUrl(
   route: AiProviderRouting,

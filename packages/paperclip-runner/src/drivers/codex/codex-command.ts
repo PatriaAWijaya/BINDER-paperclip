@@ -12,15 +12,11 @@ export function resolveCodexCommand(
     const runnerRequire = createRequire(issuer);
     let manifestPath: string;
     try {
-      let bridgeManifest: string;
-      try {
-        bridgeManifest = runnerRequire.resolve("@agentclientprotocol/codex-acp/package.json");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "MODULE_NOT_FOUND") throw error;
-        // pnpm can retain the bridge inside its declared adapter dependency.
-        const adapter = runnerRequire.resolve("@paperclipai/adapter-codex-local/server");
-        bridgeManifest = createRequire(adapter).resolve("@agentclientprotocol/codex-acp/package.json");
-      }
+      // The bridge is a direct dependency of the runner package, so it
+      // resolves from the issuer's own node_modules. (The deleted
+      // codex_local adapter used to be a second nesting that could retain
+      // the bridge under pnpm; that fallback died with the adapter.)
+      const bridgeManifest = runnerRequire.resolve("@agentclientprotocol/codex-acp/package.json");
       manifestPath = createRequire(bridgeManifest).resolve("@openai/codex/package.json");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "MODULE_NOT_FOUND") throw error;

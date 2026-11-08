@@ -21,7 +21,6 @@ import {
 } from "@paperclipai/db";
 import { readPaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import { claudeConfigDir, parseClaudeStreamJson } from "@paperclipai/adapter-claude-local/server";
-import { codexHomeDir, parseCodexJsonl } from "@paperclipai/adapter-codex-local/server";
 import { parseOpenCodeJsonl } from "@paperclipai/adapter-opencode-local/server";
 import {
   DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
@@ -368,7 +367,6 @@ function parseRunLogEntries(logText: string | null) {
 
 function captureStatusFromFiles(files: FeedbackTraceBundleFile[]): FeedbackTraceBundleCaptureStatus {
   const sources = new Set(files.map((file) => file.source));
-  if (sources.has("codex_session")) return "full";
   if (sources.has("claude_project_session") || sources.has("claude_debug_log")) return "full";
   if (
     sources.has("opencode_session") &&
@@ -385,63 +383,6 @@ function captureStatusFromFiles(files: FeedbackTraceBundleFile[]): FeedbackTrace
   );
   if (hasAdapterFiles) return "partial";
   return files.length > 0 ? "partial" : "unavailable";
-}
-
-async function buildCodexTraceFiles(input: {
-  companyId: string;
-  sessionId: string | null;
-  state: ReturnType<typeof createFeedbackRedactionState>;
-  notes: string[];
-}) {
-  const files: FeedbackTraceBundleFile[] = [];
-  if (!input.sessionId) {
-    appendNote(input.notes, "codex_session_id_missing");
-    return { files, raw: null as Record<string, unknown> | null, normalized: null as Record<string, unknown> | null };
-  }
-
-  const managedRoot = path.join(
-    resolvePaperclipInstanceRoot(),
-    "companies",
-    input.companyId,
-    "codex-home",
-    "sessions",
-  );
-  const sharedRoot = path.join(codexHomeDir(), "sessions");
-  const sessionFile =
-    await findMatchingFile(managedRoot, (_absolutePath, name) => name.includes(input.sessionId!), 6) ??
-    await findMatchingFile(sharedRoot, (_absolutePath, name) => name.includes(input.sessionId!), 6);
-
-  const sessionText = await readTextFileIfPresent(sessionFile, input.state, "bundle.rawAdapterTrace.codex.session");
-  if (!sessionText) {
-    appendNote(input.notes, "codex_session_file_missing");
-    return { files, raw: null as Record<string, unknown> | null, normalized: null as Record<string, unknown> | null };
-  }
-
-  files.push(makeBundleFile({
-    path: "adapter/codex/session.jsonl",
-    contentType: "application/x-ndjson",
-    source: "codex_session",
-    contents: sessionText,
-  }));
-
-  return {
-    files,
-    raw: {
-      adapterType: "codex_local",
-      sessionId: input.sessionId,
-      sessionFile: sessionFile ? path.basename(sessionFile) : null,
-    },
-    normalized: sanitizeFeedbackValue(
-      {
-        adapterType: "codex_local",
-        sessionId: input.sessionId,
-        summary: parseCodexJsonl(sessionText),
-      },
-      input.state,
-      "bundle.normalizedAdapterTrace.codex",
-      MAX_TRACE_FILE_CHARS,
-    ) as Record<string, unknown>,
-  };
 }
 
 async function buildClaudeTraceFiles(input: {
@@ -1604,17 +1545,7 @@ async function buildFeedbackTraceBundleFromRow(
         appendNote(notes, "run_log_missing");
       }
 
-      if (run.adapterType === "codex_local") {
-        const adapter = await buildCodexTraceFiles({
-          companyId: row.companyId,
-          sessionId: run.sessionIdAfter ?? run.sessionIdBefore,
-          state,
-          notes,
-        });
-        files.push(...adapter.files);
-        rawAdapterTrace = adapter.raw;
-        normalizedAdapterTrace = adapter.normalized;
-      } else if (run.adapterType === "claude_local") {
+      if (run.adapterType === "claude_local") {
         const adapter = await buildClaudeTraceFiles({
           sessionId: run.sessionIdAfter ?? run.sessionIdBefore,
           stdoutText,

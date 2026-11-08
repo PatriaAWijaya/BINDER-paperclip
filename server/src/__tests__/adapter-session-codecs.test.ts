@@ -1,14 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { sessionCodec as claudeSessionCodec } from "@paperclipai/adapter-claude-local/server";
-import { sessionCodec as codexSessionCodec, isCodexUnknownSessionError } from "@paperclipai/adapter-codex-local/server";
-import {
-  sessionCodec as cursorSessionCodec,
-  isCursorUnknownSessionError,
-} from "@paperclipai/adapter-cursor-local/server";
-import {
-  sessionCodec as geminiSessionCodec,
-  isGeminiSessionUnrecoverableError,
-} from "@paperclipai/adapter-gemini-local/server";
 import {
   sessionCodec as opencodeSessionCodec,
   isOpenCodeUnknownSessionError,
@@ -77,50 +68,9 @@ describe("adapter session codecs", () => {
     expect(claudeSessionCodec.getDisplayId?.(parsed)).toBe("runtime-session-1");
   });
 
-  it("normalizes codex session params with cwd", () => {
-    const parsed = codexSessionCodec.deserialize({
-      sessionId: "codex-session-1",
-      cwd: "/tmp/codex",
-    });
-    expect(parsed).toEqual({
-      sessionId: "codex-session-1",
-      cwd: "/tmp/codex",
-    });
-
-    const serialized = codexSessionCodec.serialize(parsed);
-    expect(serialized).toEqual({
-      sessionId: "codex-session-1",
-      cwd: "/tmp/codex",
-    });
-    expect(codexSessionCodec.getDisplayId?.(serialized ?? null)).toBe("codex-session-1");
-  });
-
-  it("preserves codex ACP session params for ACP lane resumes", () => {
-    const parsed = codexSessionCodec.deserialize({
-      sessionKey: "paperclip:company:agent:task:fingerprint",
-      runtimeSessionName: "runtime-session-1",
-      acpxRecordId: "record-1",
-      acpSessionId: "acp-session-1",
-      agentSessionId: "agent-session-1",
-      agent: "codex",
-      cwd: "/tmp/codex-acp",
-      mode: "persistent",
-      stateDir: "/tmp/codex-acp-state",
-      configFingerprint: "fingerprint",
-      workspaceId: "workspace-1",
-    });
-
-    expect(parsed).toMatchObject({
-      runtimeSessionName: "runtime-session-1",
-      acpSessionId: "acp-session-1",
-      agent: "codex",
-      cwd: "/tmp/codex-acp",
-      configFingerprint: "fingerprint",
-      workspaceId: "workspace-1",
-    });
-    expect(codexSessionCodec.serialize(parsed)).toEqual(parsed);
-    expect(codexSessionCodec.getDisplayId?.(parsed)).toBe("runtime-session-1");
-  });
+  // The codex session-codec tests lived here (normalize + ACP-lane resume).
+  // The codex adapter and its sessionCodec died with the adapter deletion.
+  // Deleted 8 Nov 2026.
 
   it("normalizes opencode session params with cwd", () => {
     const parsed = opencodeSessionCodec.deserialize({
@@ -140,68 +90,12 @@ describe("adapter session codecs", () => {
     expect(opencodeSessionCodec.getDisplayId?.(serialized ?? null)).toBe("opencode-session-1");
   });
 
-  it("normalizes cursor session params with cwd", () => {
-    const parsed = cursorSessionCodec.deserialize({
-      session_id: "cursor-session-1",
-      cwd: "/tmp/cursor",
-    });
-    expect(parsed).toEqual({
-      sessionId: "cursor-session-1",
-      cwd: "/tmp/cursor",
-    });
+  // The cursor session-codec test lived here. The cursor adapter and its
+  // sessionCodec died with the adapter deletion. Deleted 8 Nov 2026.
 
-    const serialized = cursorSessionCodec.serialize(parsed);
-    expect(serialized).toEqual({
-      sessionId: "cursor-session-1",
-      cwd: "/tmp/cursor",
-    });
-    expect(cursorSessionCodec.getDisplayId?.(serialized ?? null)).toBe("cursor-session-1");
-  });
-
-  it("normalizes gemini session params with cwd", () => {
-    const parsed = geminiSessionCodec.deserialize({
-      session_id: "gemini-session-1",
-      cwd: "/tmp/gemini",
-    });
-    expect(parsed).toEqual({
-      sessionId: "gemini-session-1",
-      cwd: "/tmp/gemini",
-    });
-
-    const serialized = geminiSessionCodec.serialize(parsed);
-    expect(serialized).toEqual({
-      sessionId: "gemini-session-1",
-      cwd: "/tmp/gemini",
-    });
-    expect(geminiSessionCodec.getDisplayId?.(serialized ?? null)).toBe("gemini-session-1");
-  });
-
-  it("preserves gemini ACP session params for ACP lane resumes", () => {
-    const parsed = geminiSessionCodec.deserialize({
-      sessionKey: "paperclip:company:agent:task:fingerprint",
-      runtimeSessionName: "runtime-session-1",
-      acpxRecordId: "record-1",
-      acpSessionId: "acp-session-1",
-      agentSessionId: "agent-session-1",
-      agent: "gemini",
-      cwd: "/tmp/gemini-acp",
-      mode: "persistent",
-      stateDir: "/tmp/gemini-acp-state",
-      configFingerprint: "fingerprint",
-      workspaceId: "workspace-1",
-    });
-
-    expect(parsed).toMatchObject({
-      runtimeSessionName: "runtime-session-1",
-      acpSessionId: "acp-session-1",
-      agent: "gemini",
-      cwd: "/tmp/gemini-acp",
-      configFingerprint: "fingerprint",
-      workspaceId: "workspace-1",
-    });
-    expect(geminiSessionCodec.serialize(parsed)).toEqual(parsed);
-    expect(geminiSessionCodec.getDisplayId?.(parsed)).toBe("runtime-session-1");
-  });
+  // The gemini session-codec tests lived here (normalize + ACP-lane resume).
+  // The gemini adapter and its sessionCodec died with the adapter deletion.
+  // Deleted 8 Nov 2026.
 
   it("preserves acpx session params required for compatibility checks", () => {
     const parsed = acpxSessionCodec.deserialize({
@@ -248,28 +142,8 @@ describe("adapter session codecs", () => {
   });
 });
 
-describe("codex resume recovery detection", () => {
-  it("detects unknown session errors from codex output", () => {
-    expect(
-      isCodexUnknownSessionError(
-        '{"type":"error","message":"Unknown session id abc"}',
-        "",
-      ),
-    ).toBe(true);
-    expect(
-      isCodexUnknownSessionError(
-        "",
-        "thread 123 not found",
-      ),
-    ).toBe(true);
-    expect(
-      isCodexUnknownSessionError(
-        '{"type":"result","ok":true}',
-        "",
-      ),
-    ).toBe(false);
-  });
-});
+// The "codex resume recovery detection" describe lived here. Its classifier
+// (isCodexUnknownSessionError) died with the codex adapter. Deleted 8 Nov 2026.
 
 describe("opencode resume recovery detection", () => {
   it("detects unknown session errors from opencode output", () => {
@@ -288,48 +162,9 @@ describe("opencode resume recovery detection", () => {
   });
 });
 
-describe("cursor resume recovery detection", () => {
-  it("detects unknown session errors from cursor output", () => {
-    expect(
-      isCursorUnknownSessionError(
-        "",
-        "Error: unknown session id abc",
-      ),
-    ).toBe(true);
-    expect(
-      isCursorUnknownSessionError(
-        "",
-        "chat abc not found",
-      ),
-    ).toBe(true);
-    expect(
-      isCursorUnknownSessionError(
-        "{\"type\":\"result\",\"subtype\":\"success\"}",
-        "",
-      ),
-    ).toBe(false);
-  });
-});
+// The "cursor resume recovery detection" describe lived here. Its classifier
+// (isCursorUnknownSessionError) died with the cursor adapter. Deleted 8 Nov 2026.
 
-describe("gemini resume recovery detection", () => {
-  it("detects unknown session errors from gemini output", () => {
-    expect(
-      isGeminiSessionUnrecoverableError(
-        "",
-        "unknown session id abc",
-      ),
-    ).toBe(true);
-    expect(
-      isGeminiSessionUnrecoverableError(
-        "",
-        "checkpoint latest not found",
-      ),
-    ).toBe(true);
-    expect(
-      isGeminiSessionUnrecoverableError(
-        "{\"type\":\"result\",\"subtype\":\"success\"}",
-        "",
-      ),
-    ).toBe(false);
-  });
-});
+// The "gemini resume recovery detection" describe lived here. Its classifier
+// (isGeminiSessionUnrecoverableError) died with the gemini adapter. Deleted
+// 8 Nov 2026.

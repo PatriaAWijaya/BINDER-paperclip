@@ -1,7 +1,7 @@
 import { models as anthropic } from "@paperclipai/adapter-claude-local";
-import { models as openai } from "@paperclipai/adapter-codex-local";
-import { models as google } from "@paperclipai/adapter-gemini-local";
-import { models as xai } from "@paperclipai/adapter-grok-local";
+import { models as openai } from "@paperclipai/shared";
+import { geminiModels as google } from "@paperclipai/shared/gemini-cli-models";
+import { grokModels as xai } from "@paperclipai/shared/grok-cli-models";
 import type { AiConnectionMetadata } from "@paperclipai/shared";
 
 /** Catalogs follow the saved API connection, never the host CLI's credentials or environment. */

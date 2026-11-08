@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { ADAPTER_AUTH_MISSING_CHECK_CODE } from "@paperclipai/shared";
 import * as localCredentialFile from "../local-ai-credential-file.js";
-import * as codexCredentials from "@paperclipai/adapter-codex-local/server";
+import * as codexCredentials from "./codex-auth-copyback.js";
 const { prepareIsolatedCodexHome } = await import(new URL("../../../../packages/paperclip-runner/src/drivers/runtime-context-materializer.ts", import.meta.url).href);
 const { execute, nativeProbe, selectedRunner, selectedRemoteRunner, sshExecute, sshRunner, nativeArtifacts, remoteLauncher, registerPrp, ingressConnect } = vi.hoisted(() => ({ execute: vi.fn(), nativeProbe: vi.fn(), selectedRunner: vi.fn(), selectedRemoteRunner: vi.fn(), sshExecute: vi.fn(), sshRunner: vi.fn(), nativeArtifacts: vi.fn(), remoteLauncher: vi.fn(), registerPrp: vi.fn(), ingressConnect: vi.fn() }));
 const nativeProbeRuntimeDirectories = vi.hoisted(() => [] as string[]);

@@ -1,4 +1,4 @@
-import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-codex-local/server";
+import { withAccountHomeSecretMutationLock } from "@paperclipai/adapter-utils/account-home-secret-mutation-lock";
 import { projectInstanceSecretService, type ProjectSecretSnapshot } from "./project-instance-secrets.js";
 import { publishActivity, type ActivityPublication } from "./activity-log.js";
 import { pluginCompanySettings, pluginLifecycleAcknowledgments, plugins, resourceLifecycleEvents, type Db } from "@paperclipai/db";

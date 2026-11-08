@@ -19,7 +19,6 @@ vi.mock("./environment-config.js", async () => ({
 vi.mock("./plugin-registry.js", () => ({ pluginRegistryService: () => ({ getByKey: state.pluginByKey }) }));
 vi.mock("@paperclipai/adapter-utils/ssh", () => ({ runSshCommand: state.ssh }));
 import { AGENT_RUNNER_SSH_PLATFORM_COMMAND, agentRunnerAvailability, resolveAgentRunnerTaskDriverForCompany, resolveAgentRunnerTargetForCompany, resolveNewAgentRunner, resolveNewAgentRunnerForCompany } from "./agent-runner-selection.js";
-import { buildCodexAcpConfig, resolveCodexExecutionEngine } from "@paperclipai/adapter-codex-local/server";
 import { secretService } from "./secrets.js";
 import * as localPlatform from "../lib/agent-runner-platform.js";
 import { fingerprintEnvironmentSandboxProviderConfig as fingerprint } from "./environment-custom-image-runtime.js";
@@ -42,21 +41,23 @@ describe("server-owned Codex runner selection", () => {
         `the current ${disabled} disable must affect Cursor selection`).not.toContain("paperclip");
     }
   });
-  it("keeps Cursor Cloud legacy by default and converts only an equivalent explicitly selected profile", () => {
+  it("rejects Cursor Cloud legacy by default and converts only an equivalent explicitly selected profile", () => {
     const config = { model: "caller-model", repoUrl: "https://github.com/acme/repo", repoStartingRef: "feature", runtimeEnvType: "cloud", env: { CURSOR_API_KEY: { type: "secret_ref", secretId: "saved-key", version: "latest" } }, instructionsFilePath: "/assigned/AGENTS.md", autoCreatePR: false };
     expect(agentRunnerAvailability("cursor_cloud", target)).toEqual({ supportedRunners: ["paperclip", "legacy"], defaultRunner: "legacy" });
-    expect(resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, target })).toEqual({ adapterType: "cursor_cloud", adapterConfig: config });
+    // Legacy Cursor Cloud has no adapter anymore: resolving it throws instead
+    // of returning the legacy profile.
+    expect(() => resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, target })).toThrow("The cursor_cloud harness was removed. Choose Paperclip Runner.");
     for (const runner of [undefined, "auto"] as const) {
       for (const driver of ["unavailable", "sandbox", "ssh"]) {
         expect(() => resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, runner, target: { driver } }))
           .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_unavailable" } }));
       }
     }
-    expect(resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, runner: "legacy", target: { driver: "sandbox" } }))
-      .toEqual({ adapterType: "cursor_cloud", adapterConfig: config });
+    expect(() => resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, runner: "legacy", target: { driver: "sandbox" } }))
+      .toThrow("The cursor_cloud harness was removed. Choose Paperclip Runner.");
     const converted = resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, runner: "paperclip", target });
     expect(converted).toEqual({ adapterType: "paperclip_runner", adapterConfig: { model: config.model, repoUrl: config.repoUrl, repoRef: "feature", cloudEnvType: "cloud", env: config.env, instructionsFilePath: config.instructionsFilePath, autoCreatePR: false, provider: "cursor_cloud", lifecycleMode: "per_turn" } });
-    expect(resolveNewAgentRunner({ ...converted, runner: "legacy", target })).toEqual({ adapterType: "cursor_cloud", adapterConfig: config });
+    expect(() => resolveNewAgentRunner({ ...converted, runner: "legacy", target })).toThrow("The cursor_cloud harness was removed. Choose Paperclip Runner.");
   });
   it("rejects unsupported Cursor Cloud settings and keeps API placement independent of the selected Computer", () => {
     const config = { model: "caller-model", repoUrl: "https://github.com/acme/repo" };
@@ -124,11 +125,11 @@ describe("server-owned Codex runner selection", () => {
       details: { code: "managed_sandbox_unavailable" },
     });
   });
-  it("preserves an explicit Legacy choice on a held Cursor setup draft", async () => {
+  it("rejects an explicit Legacy choice on a held Cursor setup draft", async () => {
     state.settings = { experimental: { enableManagedSandboxOnly: true, enableNativeRunner: true } };
-    expect(await resolveNewAgentRunnerForCompany({} as never, "company", {
+    await expect(resolveNewAgentRunnerForCompany({} as never, "company", {
       adapterType: "cursor_cloud", runner: "legacy", setupOnly: true, adapterConfig: {},
-    })).toEqual({ adapterType: "cursor_cloud", adapterConfig: {} });
+    })).rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
     expect(state.managedEnvironment).not.toHaveBeenCalled();
   });
   it("refuses native Cursor save and availability under Kubernetes-only policy without provisioning", async () => {
@@ -141,21 +142,23 @@ describe("server-owned Codex runner selection", () => {
     expect(state.getEnvironment).not.toHaveBeenCalled();
     expect(state.ensureKubernetesEnvironment).not.toHaveBeenCalled();
   });
-  it("keeps legacy Cursor Cloud environment bindings and rejects their unsupported native conversion", () => {
+  it("rejects legacy Cursor Cloud environment bindings and rejects their unsupported native conversion", () => {
     const config = { model: "caller-model", repoUrl: "https://github.com/acme/repo",
       env: { CURSOR_API_KEY: { type: "secret_ref", secretId: "saved-key", version: "latest" }, GH_TOKEN: { type: "secret_ref", secretId: "hosted-key", version: "latest" } } };
-    expect(resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, runner: "legacy", target }))
-      .toEqual({ adapterType: "cursor_cloud", adapterConfig: config });
+    expect(() => resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, runner: "legacy", target }))
+      .toThrow("The cursor_cloud harness was removed. Choose Paperclip Runner.");
     expect(() => resolveNewAgentRunner({ adapterType: "cursor_cloud", adapterConfig: config, runner: "paperclip", target }))
       .toThrow("Configure hosted secrets in your Cursor Cloud environment");
     expect(config.env.GH_TOKEN).toEqual({ type: "secret_ref", secretId: "hosted-key", version: "latest" });
   });
-  it.each(["x64", "arm64"])("keeps detected musl/unknown Linux %s legacy and preserves saved execution", architecture => {
+  it.each(["x64", "arm64"])("rejects detected musl/unknown Linux %s legacy and preserves saved execution", architecture => {
     for (const libc of ["musl", "unknown"] as const) {
       const target = { driver: "local", platform: "linux", architecture, libc };
       expect(agentRunnerAvailability("codex_local", target)).toEqual({ supportedRunners: ["legacy"], defaultRunner: "legacy" });
       const input = { adapterType: "codex_local", adapterConfig: { extraArgs: ["--sandbox", "read-only"] }, target };
-      expect(resolveNewAgentRunner(input)).toEqual({ adapterType: input.adapterType, adapterConfig: input.adapterConfig });
+      // The legacy Codex adapter is gone: an unqualified target no longer
+      // falls back to it, it rejects.
+      expect(() => resolveNewAgentRunner(input)).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
       expect(() => resolveNewAgentRunner({ ...input, runner: "paperclip" })).toThrow("unavailable");
       const saved = { adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" }, target };
       expect(resolveNewAgentRunner(saved)).toEqual({ adapterType: saved.adapterType, adapterConfig: saved.adapterConfig });
@@ -170,8 +173,15 @@ describe("server-owned Codex runner selection", () => {
     const localTarget = localPlatform.localAgentRunnerTarget();
     expect(localTarget).toEqual({ driver: "local", platform: "linux", architecture: "arm64", libc: glibcVersionRuntime ? "glibc" : "unknown", ...(glibcVersionRuntime ? { glibcVersion: glibcVersionRuntime.trim() } : {}) });
     expect(agentRunnerAvailability("codex_local").defaultRunner).toBe(native ? "paperclip" : "legacy");
-    const saved = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local" });
-    expect(saved.adapterType).toBe(native ? "paperclip_runner" : "codex_local");
+    if (native) {
+      const saved = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local" });
+      expect(saved.adapterType).toBe("paperclip_runner");
+    } else {
+      // Below the runner's glibc floor there is no legacy Codex adapter to
+      // fall back to anymore.
+      await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local" }))
+        .rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
+    }
   });
   it.each([
     ["2.38", false], ["2.39", true], ["2.40", true], ["3.0", true], ["2.9", false],
@@ -184,7 +194,11 @@ describe("server-owned Codex runner selection", () => {
       const target = { driver: "local", platform: "linux", architecture, libc: "glibc" as const, glibcVersion: String(glibcVersion) };
       expect(paperclipRunnerSupportsPlatform("codex_local", target.platform, architecture, target.libc, target.glibcVersion)).toBe(native);
       expect(agentRunnerAvailability("codex_local", target).defaultRunner).toBe(native ? "paperclip" : "legacy");
-      expect(resolveNewAgentRunner({ adapterType: "codex_local", target }).adapterType).toBe(native ? "paperclip_runner" : "codex_local");
+      if (native) {
+        expect(resolveNewAgentRunner({ adapterType: "codex_local", target }).adapterType).toBe("paperclip_runner");
+      } else {
+        expect(() => resolveNewAgentRunner({ adapterType: "codex_local", target })).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
+      }
       if (!native) expect(() => resolveNewAgentRunner({ adapterType: "codex_local", runner: "paperclip", target })).toThrow("unavailable");
       const saved = { adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" }, target, runner: "paperclip" as const };
       expect(resolveNewAgentRunner(saved)).toEqual({ adapterType: saved.adapterType, adapterConfig: saved.adapterConfig });
@@ -204,21 +218,21 @@ describe("server-owned Codex runner selection", () => {
     expect(resolveNewAgentRunner(resolved)).toEqual(resolved);
     expect(input.adapterConfig).toHaveProperty("search", false);
   });
-  it.each(["cursor", "process", "external"])("keeps %s default unchanged", adapterType => {
+  it.each(["process", "external"])("keeps %s default unchanged", adapterType => {
     expect(resolveNewAgentRunner({ adapterType, target, adapterConfig: { custom: "preserved" } })).toEqual({ adapterType, adapterConfig: { custom: "preserved" } });
   });
-  it.each(qualifiedTargets.filter(target => !(target.platform === "linux" && target.architecture === "arm64")))("defaults Pi to native on $platform/$architecture and round trips exact thinking", target => {
+  it.each(qualifiedTargets.filter(target => !(target.platform === "linux" && target.architecture === "arm64")))("defaults Pi to native on $platform/$architecture and rejects the legacy round trip", target => {
     const adapterConfig = { model: "openrouter/anthropic/claude-sonnet-4.6", thinking: "high", command: "pi", env: { OPENROUTER_API_KEY: { type: "secret_ref", secretId: "connection" } }, cwd: "/workspace" };
     const selected = resolveNewAgentRunner({ adapterType: "pi_local", adapterConfig, target });
     expect(agentRunnerAvailability("pi_local", target).defaultRunner).toBe("paperclip");
     expect(selected).toEqual({ adapterType: "paperclip_runner", adapterConfig: { provider: "acpx", acpxAgent: "pi", model: adapterConfig.model, piThinkingLevel: "high", acpxPermissionMode: "approve-all", lifecycleMode: "per_turn", cwd: adapterConfig.cwd, env: adapterConfig.env } });
     expect(resolveNewAgentRunner(selected)).toEqual(selected);
-    expect(resolveNewAgentRunner({ ...selected, runner: "legacy" })).toEqual({ adapterType: "pi_local", adapterConfig: { model: adapterConfig.model, thinking: "high", cwd: adapterConfig.cwd, env: adapterConfig.env } });
+    expect(() => resolveNewAgentRunner({ ...selected, runner: "legacy" })).toThrow("The pi_local harness was removed. Choose Paperclip Runner.");
   });
   it.each(["minimal", "medium", "xhigh"])("keeps unsupported Pi thinking %s explicit", thinking => {
     const input = { adapterType: "pi_local", target, adapterConfig: { model: "custom/model", thinking } };
     expect(() => resolveNewAgentRunner(input)).toThrow("cannot honor");
-    expect(resolveNewAgentRunner({ ...input, runner: "legacy" })).toEqual({ adapterType: input.adapterType, adapterConfig: input.adapterConfig });
+    expect(() => resolveNewAgentRunner({ ...input, runner: "legacy" })).toThrow("The pi_local harness was removed. Choose Paperclip Runner.");
   });
   it.each([{ command: "custom-pi" }, { args: ["--extension", "custom.ts"] }, { extraArgs: "--no-tools" }, { stdoutLogMode: "raw" }, { thinking: "low", piThinkingLevel: "high" }])("rejects unsupported Pi configuration %j", extra => {
     expect(() => resolveNewAgentRunner({ adapterType: "pi_local", target, adapterConfig: { model: "custom/model", ...extra } })).toThrow("cannot honor");
@@ -230,23 +244,27 @@ describe("server-owned Codex runner selection", () => {
     expect(resolveNewAgentRunner({ adapterType: "pi_local", target, setupOnly: true })).toMatchObject({ adapterType: "paperclip_runner", adapterConfig: { provider: "acpx", acpxAgent: "pi", model: "", piThinkingLevel: "low" } });
     const saved = { adapterType: "paperclip_runner", target, adapterConfig: { provider: "acpx", acpxAgent: "pi", model: "custom/model", piThinkingLevel: "max", acpxPermissionMode: "approve-reads", lifecycleMode: "warm", idleTimeoutMs: 1234 } };
     expect(resolveNewAgentRunner(saved)).toEqual({ adapterType: saved.adapterType, adapterConfig: saved.adapterConfig });
-    expect(() => resolveNewAgentRunner({ ...saved, runner: "legacy" })).toThrow("Legacy Pi cannot honor");
+    expect(() => resolveNewAgentRunner({ ...saved, runner: "legacy" })).toThrow("The pi_local harness was removed. Choose Paperclip Runner.");
   });
-  it.each([{ driver: "local", platform: "win32", architecture: "x64" }, { driver: "local", platform: "linux", architecture: "arm64", libc: "glibc" as const, glibcVersion: "2.39" }, { driver: "ssh", platform: "linux", architecture: "arm64", libc: "glibc" as const, glibcVersion: "2.39" }, { driver: "sandbox" }, { driver: "local", platform: "linux", architecture: "x64", libc: "musl" as const }])("keeps Pi legacy on unqualified $driver/$platform targets", target => {
+  it.each([{ driver: "local", platform: "win32", architecture: "x64" }, { driver: "local", platform: "linux", architecture: "arm64", libc: "glibc" as const, glibcVersion: "2.39" }, { driver: "ssh", platform: "linux", architecture: "arm64", libc: "glibc" as const, glibcVersion: "2.39" }, { driver: "sandbox" }, { driver: "local", platform: "linux", architecture: "x64", libc: "musl" as const }])("rejects Pi legacy on unqualified $driver/$platform targets", target => {
     const input = { adapterType: "pi_local", adapterConfig: { model: "custom/model", thinking: "medium" }, target };
     expect(agentRunnerAvailability("pi_local", target).defaultRunner).toBe("legacy");
-    expect(resolveNewAgentRunner(input)).toEqual({ adapterType: input.adapterType, adapterConfig: input.adapterConfig });
+    // The legacy Pi adapter is gone: an unqualified target rejects instead
+    // of falling back to it.
+    expect(() => resolveNewAgentRunner(input)).toThrow("The pi_local harness was removed. Choose Paperclip Runner.");
     expect(() => resolveNewAgentRunner({ ...input, runner: "paperclip" })).toThrow("unavailable");
   });
-  it.each(["minimal", "medium", "xhigh"])("honors an explicit Legacy Pi thinking edit to %s when resuming a native draft", thinking => {
-    expect(resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "acpx", acpxAgent: "pi", model: "custom/model", piThinkingLevel: "max", thinking } })).toEqual({ adapterType: "pi_local", adapterConfig: { model: "custom/model", thinking } });
+  it.each(["minimal", "medium", "xhigh"])("rejects an explicit Legacy Pi thinking edit to %s when resuming a native draft", thinking => {
+    expect(() => resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "acpx", acpxAgent: "pi", model: "custom/model", piThinkingLevel: "max", thinking } })).toThrow("The pi_local harness was removed. Choose Paperclip Runner.");
   });
   it("honors disabled and overridden Pi adapters", () => {
     const input = { adapterType: "pi_local", target, adapterConfig: { model: "custom/model" } };
     state.overridden.add("pi_local");
-    expect(resolveNewAgentRunner(input).adapterType).toBe("pi_local");
+    // Even overridden, the removed legacy Pi adapter cannot be resolved.
+    expect(() => resolveNewAgentRunner(input)).toThrow("The pi_local harness was removed. Choose Paperclip Runner.");
     state.overridden.clear(); state.disabled = ["paperclip_runner"];
-    expect(resolveNewAgentRunner(input).adapterType).toBe("pi_local");
+    // Disabling Paperclip Runner no longer revives the removed legacy Pi.
+    expect(() => resolveNewAgentRunner(input)).toThrow("The pi_local harness was removed. Choose Paperclip Runner.");
     state.disabled = ["pi_local"];
     expect(() => resolveNewAgentRunner(input)).toThrow("Pi is disabled");
   });
@@ -296,38 +314,39 @@ describe("server-owned Codex runner selection", () => {
     state.disabled = ["opencode_local"];
     expect(() => resolveNewAgentRunner({ ...input, target })).toThrow("OpenCode is disabled");
   });
-  it.each(qualifiedTargets)("allows an explicit legacy runner and native to legacy round trip on $platform/$architecture", target => {
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", target, runner: "legacy", adapterConfig: { extraArgs: ["--search"] } }).adapterType).toBe("codex_local");
-    expect(resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "codex", model: "gpt-5.6-sol", lifecycleMode: "per_turn", codexPermissionMode: "never", modelReasoningEffort: "high" } })).toEqual({ adapterType: "codex_local", adapterConfig: { model: "gpt-5.6-sol", modelReasoningEffort: "high", dangerouslyBypassApprovalsAndSandbox: true } });
+  it.each(qualifiedTargets)("rejects an explicit legacy runner and the native to legacy round trip on $platform/$architecture", target => {
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", target, runner: "legacy", adapterConfig: { extraArgs: ["--search"] } })).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
+    expect(() => resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "codex", model: "gpt-5.6-sol", lifecycleMode: "per_turn", codexPermissionMode: "never", modelReasoningEffort: "high" } })).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
   });
-  it("preserves explicit legacy permission policy alongside compatible native lifecycle defaults", () => {
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", runner: "legacy", adapterConfig: { dangerouslyBypassApprovalsAndSandbox: false, lifecycleMode: "per_turn" } }))
-      .toEqual({ adapterType: "codex_local", adapterConfig: { dangerouslyBypassApprovalsAndSandbox: false } });
-    expect(resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "codex", codexPermissionMode: "never", lifecycleMode: "per_turn", dangerouslyBypassApprovalsAndSandbox: false } }))
-      .toEqual({ adapterType: "codex_local", adapterConfig: { dangerouslyBypassApprovalsAndSandbox: false } });
+  it("rejects an explicit legacy permission policy alongside compatible native lifecycle defaults", () => {
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", runner: "legacy", adapterConfig: { dangerouslyBypassApprovalsAndSandbox: false, lifecycleMode: "per_turn" } }))
+      .toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
+    expect(() => resolveNewAgentRunner({ adapterType: "paperclip_runner", runner: "legacy", adapterConfig: { provider: "codex", codexPermissionMode: "never", lifecycleMode: "per_turn", dangerouslyBypassApprovalsAndSandbox: false } }))
+      .toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
   });
-  it.each([{ platform: "win32", architecture: "x64" }, { platform: "linux", architecture: "arm" }, { platform: "darwin", architecture: "ia32" }])("keeps unqualified $platform/$architecture targets legacy while preserving explicit native profiles", ({ platform, architecture }) => {
+  it.each([{ platform: "win32", architecture: "x64" }, { platform: "linux", architecture: "arm" }, { platform: "darwin", architecture: "ia32" }])("rejects unqualified $platform/$architecture targets legacy while preserving explicit native profiles", ({ platform, architecture }) => {
     const input = { adapterType: "codex_local", target: { driver: "local", platform, architecture } };
-    expect(resolveNewAgentRunner(input).adapterType).toBe("codex_local");
+    expect(() => resolveNewAgentRunner(input)).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
     expect(() => resolveNewAgentRunner({ ...input, runner: "paperclip" })).toThrow("unavailable");
     const saved = { adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" }, target: input.target };
     expect(resolveNewAgentRunner(saved)).toEqual({ adapterType: saved.adapterType, adapterConfig: saved.adapterConfig });
     expect(resolveNewAgentRunner({ ...saved, runner: "paperclip" })).toEqual({ adapterType: saved.adapterType, adapterConfig: saved.adapterConfig });
   });
-  it.each(qualifiedTargets)("automatically keeps unsupported targets and active external overrides legacy on $platform/$architecture", target => {
+  it.each(qualifiedTargets)("rejects legacy for unsupported targets and active external overrides on $platform/$architecture", target => {
     const input = { adapterType: "codex_local", target: { driver: "local", platform: "win32", architecture: "x64" } };
-    expect(resolveNewAgentRunner(input).adapterType).toBe("codex_local");
+    expect(() => resolveNewAgentRunner(input)).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
     expect(() => resolveNewAgentRunner({ ...input, runner: "paperclip" })).toThrow("unavailable");
     state.overridden.add("codex_local");
     expect(agentRunnerAvailability("codex_local", target).defaultRunner).toBe("legacy");
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", target }).adapterType).toBe("codex_local");
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", target })).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
     state.overridden.clear();
     state.overridden.add("paperclip_runner");
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", target }).adapterType).toBe("codex_local");
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", target })).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
   });
   it.each(qualifiedTargets)("does not select a disabled runner on $platform/$architecture", target => {
     state.disabled = ["paperclip_runner"];
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", target }).adapterType).toBe("codex_local");
+    // Disabling Paperclip Runner no longer revives the removed legacy Codex.
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", target })).toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
     expect(() => resolveNewAgentRunner({ adapterType: "codex_local", target, runner: "paperclip" })).toThrow("unavailable");
     state.disabled = ["codex_local"];
     expect(() => resolveNewAgentRunner({ adapterType: "codex_local", target })).toThrow("Codex is disabled");
@@ -346,13 +365,12 @@ describe("server-owned Codex runner selection", () => {
     ["warmHandleIdleMs", "acpWarmHandleIdleMs", 30_000],
   ])("rejects effective Legacy ACP alias %s/%s before automatic native translation", (canonical, alias, value) => {
     const adapterConfig = { engine: "acp", [alias]: value };
-    expect(buildCodexAcpConfig(adapterConfig)).toHaveProperty(canonical, value);
     for (const runner of ["auto", "paperclip"] as const) {
       expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner }))
         .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_config_incompatible", fields: [alias] } }));
     }
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
-      .toEqual({ adapterType: "codex_local", adapterConfig });
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
+      .toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
   });
 
   it.each([
@@ -361,7 +379,6 @@ describe("server-owned Codex runner selection", () => {
     ["permissionMode", "acpPermissionMode", "approve-all", "deny-all"],
   ])("checks the effective canonical ACP %s ahead of its alias", (canonical, alias, value, aliasedValue) => {
     const adapterConfig = { engine: "acp", [canonical]: value, [alias]: aliasedValue };
-    expect(buildCodexAcpConfig(adapterConfig)).toHaveProperty(canonical, value);
     expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target }))
       .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_config_incompatible", fields: [canonical] } }));
   });
@@ -370,18 +387,16 @@ describe("server-owned Codex runner selection", () => {
     const adapterConfig = { engine: "acp", mode: "persistent", acpMode: "oneshot",
       nonInteractivePermissions: "deny", acpNonInteractivePermissions: "fail",
       warmHandleIdleMs: 0, acpWarmHandleIdleMs: 30_000 };
-    expect(buildCodexAcpConfig(adapterConfig)).toMatchObject({ mode: "persistent", nonInteractivePermissions: "deny", warmHandleIdleMs: 0 });
     const resolved = resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target });
     expect(resolved).toMatchObject({ adapterType: "paperclip_runner", adapterConfig: { codexPermissionMode: "never" } });
     for (const field of Object.keys(adapterConfig)) expect(resolved.adapterConfig).not.toHaveProperty(field);
     expect(resolveNewAgentRunner(resolved)).toEqual(resolved);
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
-      .toEqual({ adapterType: "codex_local", adapterConfig });
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
+      .toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
   });
 
   it("accepts equivalent ACP default aliases without persisting legacy-only controls", () => {
     const adapterConfig = { engine: "acp", acpMode: " persistent ", acpNonInteractivePermissions: " deny ", acpWarmHandleIdleMs: 0 };
-    expect(buildCodexAcpConfig(adapterConfig)).toMatchObject({ mode: "persistent", nonInteractivePermissions: "deny", warmHandleIdleMs: 0 });
     const resolved = resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target });
     expect(resolved.adapterType).toBe("paperclip_runner");
     for (const field of Object.keys(adapterConfig)) expect(resolved.adapterConfig).not.toHaveProperty(field);
@@ -390,22 +405,18 @@ describe("server-owned Codex runner selection", () => {
 
   it("uses nullish ACP idle precedence instead of treating a canonical zero as absent", () => {
     const adapterConfig = { engine: "acp", warmHandleIdleMs: null, acpWarmHandleIdleMs: 30_000 };
-    expect(buildCodexAcpConfig(adapterConfig)).toHaveProperty("warmHandleIdleMs", 30_000);
     expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target }))
       .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_config_incompatible", fields: ["acpWarmHandleIdleMs"] } }));
   });
 
   it("uses a nonempty ACP alias when its canonical string is blank", () => {
     const adapterConfig = { engine: "acp", permissionMode: "  ", acpPermissionMode: " deny-all " };
-    expect(buildCodexAcpConfig(adapterConfig)).toHaveProperty("permissionMode", "deny-all");
     expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target }))
       .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_config_incompatible", fields: ["acpPermissionMode"] } }));
   });
 
   it.each([undefined, "acp"])("rejects effective Legacy ACP network denial for engine=%s before native selection", async engine => {
     const adapterConfig = { ...(engine ? { engine } : {}), env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "false" } };
-    expect(resolveCodexExecutionEngine(adapterConfig).engine).toBe("acp");
-    expect(buildCodexAcpConfig(adapterConfig)).toMatchObject({ env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "false" } });
     const { codexNetworkAccess } = await import(new URL(
       "../../../packages/paperclip-runner/src/drivers/codex/codex-security-config.ts", import.meta.url,
     ).href);
@@ -414,8 +425,8 @@ describe("server-owned Codex runner selection", () => {
       expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner }))
         .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_config_incompatible", fields: ["env.PAPERCLIP_CODEX_ACP_NETWORK_ACCESS"] } }));
     }
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
-      .toEqual({ adapterType: "codex_local", adapterConfig });
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
+      .toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
     expect(adapterConfig.env).toEqual({ PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "false" });
   });
 
@@ -425,15 +436,10 @@ describe("server-owned Codex runner selection", () => {
     { type: "user_secret_ref", key: "fixture-policy", version: "latest" },
   ])("does not discard a bound ACP network restriction or guess its value (%j)", async binding => {
     const adapterConfig = { engine: "acp", env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: binding } };
-    if (binding.type === "plain") {
-      const resolved = await secretService({} as never).resolveEnvBindings("fixture-company", adapterConfig.env);
-      expect(buildCodexAcpConfig({ ...adapterConfig, env: resolved.env }))
-        .toMatchObject({ env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "false" } });
-    }
     expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target }))
       .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_config_incompatible", fields: ["env.PAPERCLIP_CODEX_ACP_NETWORK_ACCESS"] } }));
-    expect(resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
-      .toEqual({ adapterType: "codex_local", adapterConfig });
+    expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target, runner: "legacy" }))
+      .toThrow("The codex_local harness was removed. Choose Paperclip Runner.");
   });
 
   it.each([
@@ -441,16 +447,12 @@ describe("server-owned Codex runner selection", () => {
     { extraArgs: [], args: ["-c", "sandbox_workspace_write.network_access=true"] },
   ])("retains actionable argument errors when Legacy arguments override a network flag (%j)", args => {
     const adapterConfig = { engine: "acp", ...args, env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "false" } };
-    expect(buildCodexAcpConfig(adapterConfig)).toMatchObject({ env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "true" } });
     expect(() => resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target }))
       .toThrow(expect.objectContaining({ status: 422, details: { code: "agent_runner_config_incompatible", fields: [args.extraArgs.length ? "extraArgs" : "args"] } }));
   });
 
   it.each(["true", "False", " false ", { type: "plain", value: "true" }])("keeps compatible ACP environment settings (%j) and native idempotence", value => {
     const adapterConfig = { engine: "acp", env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: value, OPENAI_API_KEY: { type: "secret_ref", secretId: "fixture-api-key" } } };
-    const literal = typeof value === "string" ? value : value.value;
-    expect(buildCodexAcpConfig({ ...adapterConfig, env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: literal } }))
-      .toMatchObject({ env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "true" } });
     const resolved = resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target });
     expect(resolved.adapterType).toBe("paperclip_runner");
     expect(resolved.adapterConfig.env).toEqual(adapterConfig.env);
@@ -459,7 +461,6 @@ describe("server-owned Codex runner selection", () => {
 
   it("keeps a saved native profile and an explicitly selected Legacy CLI's unused ACP flag unchanged", () => {
     const adapterConfig = { engine: "cli", env: { PAPERCLIP_CODEX_ACP_NETWORK_ACCESS: "false" } };
-    expect(resolveCodexExecutionEngine(adapterConfig).engine).toBe("cli");
     expect(resolveNewAgentRunner({ adapterType: "codex_local", adapterConfig, target }).adapterType).toBe("paperclip_runner");
     const saved = { adapterType: "paperclip_runner", adapterConfig: { provider: "codex", env: adapterConfig.env } };
     expect(resolveNewAgentRunner(saved)).toEqual(saved);
@@ -479,11 +480,13 @@ describe("server-owned Codex runner selection", () => {
     expect(state.sandboxQualification).not.toHaveBeenCalled();
     expect(state.ssh).not.toHaveBeenCalled();
   });
-  it.each([undefined, "auto"] as const)("preserves Codex %s creation before a forced Kubernetes environment exists", async runner => {
+  it.each([undefined, "auto"] as const)("rejects Codex %s creation before a forced Kubernetes environment exists", async runner => {
     state.settings = { general: { executionMode: "kubernetes" } };
     const adapterConfig = { model: "gpt-5.6-sol", extraArgs: ["--search"], env: { OPENAI_API_KEY: { type: "secret_ref", secretId: "synthetic-secret" } } };
-    const resolved = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", adapterConfig, runner });
-    expect(resolved).toEqual({ adapterType: "codex_local", adapterConfig });
+    // The legacy Codex adapter is gone, so creation rejects before any
+    // Kubernetes environment is provisioned.
+    await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", adapterConfig, runner }))
+      .rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
     expect(state.ensureKubernetesEnvironment).not.toHaveBeenCalled();
     expect(state.resolveEnvironment).not.toHaveBeenCalled();
     expect(state.sandboxQualification).not.toHaveBeenCalled();
@@ -498,15 +501,13 @@ describe("server-owned Codex runner selection", () => {
     expect(state.sandboxQualification).not.toHaveBeenCalled();
     expect(state.ssh).not.toHaveBeenCalled();
   });
-  it("preserves explicit Legacy and recorded native execution without reading the forced Kubernetes target", async () => {
+  it("rejects explicit Legacy and preserves recorded native execution without reading the forced Kubernetes target", async () => {
     state.settings = { general: { executionMode: "kubernetes" } };
-    for (const input of [
-      { adapterType: "codex_local", runner: "legacy" as const, adapterConfig: { extraArgs: ["--search"] } },
-      { adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" } },
-    ]) {
-      expect(await resolveNewAgentRunnerForCompany({} as never, "company", input))
-        .toEqual({ adapterType: input.adapterType, adapterConfig: input.adapterConfig });
-    }
+    await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", runner: "legacy" as const, adapterConfig: { extraArgs: ["--search"] } }))
+      .rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
+    const nativeInput = { adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "gpt-5.6-sol" } };
+    expect(await resolveNewAgentRunnerForCompany({} as never, "company", nativeInput))
+      .toEqual({ adapterType: nativeInput.adapterType, adapterConfig: nativeInput.adapterConfig });
     expect(state.kubernetesEnvironment).not.toHaveBeenCalled();
     expect(state.ensureKubernetesEnvironment).not.toHaveBeenCalled();
   });
@@ -556,8 +557,15 @@ describe("server-owned Codex runner selection", () => {
     state.ssh.mockResolvedValue({ stdout });
     const discoveredTarget = await resolveAgentRunnerTargetForCompany({} as never, "company", "selected");
     expect(agentRunnerAvailability("codex_local", discoveredTarget).defaultRunner).toBe(expectedRunner);
-    const saved = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "selected" });
-    expect(saved.adapterType).toBe(expectedAdapter);
+    if (expectedAdapter === "codex_local") {
+      // An unqualified SSH target no longer falls back to the removed
+      // legacy Codex adapter.
+      await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "selected" }))
+        .rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
+    } else {
+      const saved = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "selected" });
+      expect(saved.adapterType).toBe(expectedAdapter);
+    }
     expect(state.ssh).toHaveBeenCalledTimes(2);
     expect(state.ssh).toHaveBeenCalledWith({}, AGENT_RUNNER_SSH_PLATFORM_COMMAND, { timeoutMs: 10_000 });
   });
@@ -579,16 +587,24 @@ describe("server-owned Codex runner selection", () => {
     state.sandboxQualification.mockResolvedValue(facts);
     const selectedTarget = await resolveAgentRunnerTargetForCompany({} as never, "company", "sandbox");
     expect(agentRunnerAvailability("codex_local", selectedTarget).defaultRunner).toBe(expected === "paperclip_runner" ? "paperclip" : "legacy");
-    const result = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "sandbox" });
-    expect(result.adapterType).toBe(expected);
+    if (expected === "codex_local") {
+      // An unqualified sandbox image no longer falls back to the removed
+      // legacy Codex adapter.
+      await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "sandbox" }))
+        .rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
+    } else {
+      const result = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "sandbox" });
+      expect(result.adapterType).toBe(expected);
+    }
     expect(state.ssh).not.toHaveBeenCalled();
     expect(state.resolveEnvironment).not.toHaveBeenCalled();
     if (expected === "codex_local") await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", runner: "paperclip", defaultEnvironmentId: "sandbox" })).rejects.toMatchObject({ status: 422 });
   });
   it("does not infer a sandbox image architecture from its driver", async () => {
     state.getEnvironment.mockResolvedValue({ id: "sandbox", driver: "sandbox", status: "active", config: { provider: "daytona" } });
-    const result = await resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "sandbox" });
-    expect(result.adapterType).toBe("codex_local"); expect(state.ssh).not.toHaveBeenCalled();
+    await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", defaultEnvironmentId: "sandbox" }))
+      .rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
+    expect(state.ssh).not.toHaveBeenCalled();
     expect(state.sandboxQualification).toHaveBeenCalledWith({}, expect.objectContaining({ id: "sandbox" }), "company");
     await expect(resolveNewAgentRunnerForCompany({} as never, "company", { adapterType: "codex_local", runner: "paperclip", defaultEnvironmentId: "sandbox" })).rejects.toMatchObject({ status: 422, details: { code: "agent_runner_unavailable" } });
   });
@@ -677,20 +693,19 @@ describe("Grok runner migration", () => {
   ])("keeps unqualified Grok $platform/$architecture on Legacy", platform => {
     expect(agentRunnerAvailability("grok_local", { ...target, ...platform }).supportedRunners).toEqual(["legacy"]);
   });
-  it("retains High effort when switching back and rejects restricted native permission loss", () => {
+  it("retains High effort on native and rejects switching back to Legacy Grok", () => {
     const selected = resolveNewAgentRunner({ adapterType: "grok_local", runner: "paperclip", target,
       adapterConfig: { model: "grok-4.7", reasoningEffort: "high" } });
-    expect(resolveNewAgentRunner({ ...selected, runner: "legacy", target })).toEqual({
-      adapterType: "grok_local", adapterConfig: { model: "grok-4.7", reasoningEffort: "high", disableWebSearch: true },
-    });
+    expect(selected.adapterConfig.reasoningEffort).toBe("high");
+    // The legacy Grok adapter is gone: switching back rejects instead of
+    // converting the native profile.
+    expect(() => resolveNewAgentRunner({ ...selected, runner: "legacy", target })).toThrow("The grok_local harness was removed. Choose Paperclip Runner.");
     expect(() => resolveNewAgentRunner({ ...selected, runner: "legacy", target,
-      adapterConfig: { ...selected.adapterConfig, acpxPermissionMode: "deny-all" } })).toThrow("cannot honor");
+      adapterConfig: { ...selected.adapterConfig, acpxPermissionMode: "deny-all" } })).toThrow("The grok_local harness was removed. Choose Paperclip Runner.");
   });
-  it.each(["modelReasoningEffort", "effort"])("preserves native %s when switching to Legacy", key => {
+  it.each(["modelReasoningEffort", "effort"])("rejects switching native %s to Legacy", key => {
     const saved = { adapterType: "paperclip_runner", adapterConfig: { provider: "acpx", acpxAgent: "grok", model: "grok-4.7", [key]: "high" } };
-    expect(resolveNewAgentRunner({ ...saved, runner: "legacy", target })).toEqual({
-      adapterType: "grok_local", adapterConfig: { model: "grok-4.7", reasoningEffort: "high", disableWebSearch: false },
-    });
+    expect(() => resolveNewAgentRunner({ ...saved, runner: "legacy", target })).toThrow("The grok_local harness was removed. Choose Paperclip Runner.");
   });
   it.each([{ command: "custom-grok" }, { extraArgs: ["--unsafe"] }, { permissionMode: "dontAsk" }, { alwaysApprove: false }, { maxTurns: 5 }])("rejects incompatible settings %j without mutating them", adapterConfig => {
     const before = structuredClone(adapterConfig);

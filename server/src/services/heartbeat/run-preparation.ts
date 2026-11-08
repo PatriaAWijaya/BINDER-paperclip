@@ -121,7 +121,6 @@ import {
   extractSkillMentionIds,
   isUuidLike,
 } from "@paperclipai/shared";
-import { evaluateCodexCredentialReadiness } from "@paperclipai/adapter-codex-local/server";
 import type { TrustPresetResolution } from "../trust-preset-resolver.js";
 
 const EXTERNAL_ATTACHMENT_OMISSIONS_KEY = "externalAttachmentOmissions";
@@ -599,54 +598,6 @@ export async function resolveExecutionRunAdapterConfig(input: {
       ...input.trustedEnvProjection,
     };
     for (const key of input.trustedEnvSecretKeys ?? []) secretKeys.add(key);
-  }
-  // Pre-dispatch credential gate for codex_local: a managed Codex home with no
-  // usable auth.json and an empty OPENAI_API_KEY would dispatch a run that
-  // immediately fails with "no Codex credentials provisioned" (adapter_failed),
-  // making a configuration problem look like a runtime failure. Surface it as a
-  // configuration-incomplete blocker instead, naming the missing credential
-  // action and owner without leaking any secret value. This runs after secret
-  // resolution so a per-agent OPENAI_API_KEY (plain or resolved secret) counts
-  // as satisfying the credential. It shares the exact readiness predicate the
-  // adapter uses at execute time, so the two cannot drift.
-  //
-  // Sandbox-destined runs are exempt: the sandbox image may carry its own
-  // Codex login (`~/.codex/auth.json` baked in at image setup), which only the
-  // adapter can probe once the sandbox is up — and on managed cloud hosts a
-  // host-side login never exists at all. The adapter's execute-time gate
-  // remains the authority there; it probes the sandbox before failing.
-  if (
-    !input.managedAiCredentials && (input.adapterType ?? null) === "codex_local" &&
-    (input.environmentDriver ?? null) !== "sandbox"
-  ) {
-    const resolvedEnv = parseObject(resolvedConfig.env);
-    const readiness = await evaluateCodexCredentialReadiness({
-      env: process.env,
-      companyId: input.companyId,
-      configuredCodexHome: readNonEmptyString(resolvedEnv.CODEX_HOME),
-      configuredApiKey: readNonEmptyString(resolvedEnv.OPENAI_API_KEY),
-    });
-    if (readiness.managed && !readiness.ready) {
-      throw new ConfigurationIncompleteFailure(
-        `configuration incomplete: no Codex credentials available for managed home "${readiness.effectiveHome}". ` +
-          `Sign in to Codex on the host with a ChatGPT subscription, or bind a per-agent OPENAI_API_KEY secret for this agent.`,
-        {
-          configurationIncomplete: {
-            reason: "codex_credentials_missing",
-            companyId: input.companyId,
-            agentId: input.agentId ?? null,
-            issueId: input.issueId ?? null,
-            projectId: input.projectId ?? null,
-            routineId: input.routineId ?? null,
-            responsibleUserId: input.responsibleUserId ?? null,
-            adapterType: "codex_local",
-            requiredEnvKeys: ["OPENAI_API_KEY"],
-            effectiveCodexHome: readiness.effectiveHome,
-            missingBindings: [],
-          },
-        },
-      );
-    }
   }
   return {
     resolvedConfig,

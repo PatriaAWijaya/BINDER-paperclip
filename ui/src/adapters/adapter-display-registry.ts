@@ -12,9 +12,7 @@ import {
   Code,
   Gem,
   Moon,
-  MousePointer2,
   Sparkles,
-  Terminal,
   Cpu,
 } from "lucide-react";
 import { OpenCodeLogoIcon } from "@/components/OpenCodeLogoIcon";
@@ -79,58 +77,16 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     icon: Sparkles,
     recommended: true,
   },
-  codex_local: {
-    label: "Codex",
-    description: "Codex CLI harness",
-    icon: Code,
-    recommended: true,
-  },
   paperclip_runner: {
     label: "Paperclip Runner",
     description: "Experimental Rust runner with a Codex provider",
     icon: Cpu,
     experimental: true,
   },
-  gemini_local: {
-    label: "Gemini CLI",
-    description: "Gemini CLI harness",
-    icon: Gem,
-  },
-  grok_local: {
-    label: "Grok Build",
-    description: "Grok Build harness",
-    icon: Bot,
-  },
-  kimi_local: {
-    label: "Kimi Code",
-    description: "Kimi Code CLI harness",
-    icon: Moon,
-  },
-  hermes_gateway: {
-    label: "Hermes Gateway",
-    description: "Remote Hermes API server",
-    icon: Bot,
-    hideFromVisualSelection: true,
-  },
-  hermes_local: {
-    label: "Hermes",
-    description: "Hermes harness",
-    icon: Bot,
-  },
   opencode_local: {
     label: "OpenCode",
     description: "OpenCode multi-provider harness",
     icon: OpenCodeLogoIcon,
-  },
-  pi_local: {
-    label: "Pi",
-    description: "Pi harness",
-    icon: Terminal,
-  },
-  cursor: {
-    label: "Cursor",
-    description: "Cursor CLI harness",
-    icon: MousePointer2,
   },
   // Display-only choice: persisted as paperclip_runner with provider openai_dot.
   grok_bot: { label: "Grok Bot", experimental: true, icon: Bot, description: "An existing external Bot in Grok" },
@@ -145,19 +101,6 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     description: "Your personal Muse at muse.ai",
     icon: Bot,
     experimental: true,
-  },
-  cursor_cloud: {
-    label: "Cursor Cloud",
-    description: "Managed remote Cursor agent",
-    icon: MousePointer2,
-  },
-  openclaw_gateway: {
-    label: "OpenClaw Gateway",
-    description: "External gateway adapter",
-    icon: Bot,
-    comingSoon: true,
-    disabledLabel: "Invite external agents from the add-agent modal",
-    hideFromVisualSelection: true,
   },
   process: {
     label: "Process",

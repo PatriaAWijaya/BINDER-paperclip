@@ -3,7 +3,7 @@ import { open } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import { runSetupTokenLogin } from "@paperclipai/adapter-claude-local/server";
-import { runDeviceLogin } from "@paperclipai/adapter-codex-local/server";
+import { runDeviceLogin } from "./device-login-runner.js";
 import { ensureCommandResolvable, resolveCommandForLogs } from "@paperclipai/adapter-utils/server-utils";
 import { resolveCodexCommand, startAntigravityBrowserLogin } from "../vendor/paperclip-runner/index.js";
 

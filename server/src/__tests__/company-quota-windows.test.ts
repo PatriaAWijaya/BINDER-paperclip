@@ -18,7 +18,7 @@ vi.mock("../services/ai-connections.js", () => ({
 vi.mock("../adapters/registry.js", () => ({
   listServerAdapters: mocks.adapters,
 }));
-vi.mock("@paperclipai/adapter-codex-local/server", () => ({
+vi.mock("../services/codex-quota.js", () => ({
   fetchCodexQuota: mocks.codex,
 }));
 vi.mock("@paperclipai/adapter-claude-local/server", () => ({

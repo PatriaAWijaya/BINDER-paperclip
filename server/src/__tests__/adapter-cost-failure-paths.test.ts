@@ -12,20 +12,10 @@ vi.mock("@paperclipai/adapter-utils/execution-target", async (original) => ({
 
 type Execute = (context: AdapterExecutionContext) => Promise<AdapterExecutionResult>;
 const cases: Array<{ name: string; execute: () => Promise<Execute>; event: unknown; tokens?: { inputTokens: number; outputTokens: number; cachedInputTokens: number }; price: number | null }> = [
-  { name: "codex", execute: async () => (await import("../../../packages/adapters/codex-local/src/server/execute.js")).execute,
-    event: { type: "turn.completed", usage: { input_tokens: 120, cached_input_tokens: 100, output_tokens: 10 } }, tokens: { inputTokens: 20, cachedInputTokens: 100, outputTokens: 10 }, price: null },
   { name: "claude", execute: async () => (await import("../../../packages/adapters/claude-local/src/server/execute.js")).execute,
     event: { type: "assistant", message: { id: "m1", usage: { input_tokens: 20, cache_read_input_tokens: 100, output_tokens: 10 }, content: [] } }, tokens: { inputTokens: 20, cachedInputTokens: 100, outputTokens: 10 }, price: null },
   { name: "opencode", execute: async () => (await import("../../../packages/adapters/opencode-local/src/server/execute.js")).execute,
     event: { type: "step_finish", part: { tokens: { input: 20, output: 10, cache: { read: 100 } }, cost: 0.004 } }, tokens: { inputTokens: 20, cachedInputTokens: 100, outputTokens: 10 }, price: 0.004 },
-  { name: "pi", execute: async () => (await import("../../../packages/adapters/pi-local/src/server/execute.js")).execute,
-    event: { type: "turn_end", message: { role: "assistant", content: [], usage: { input: 20, output: 10, cacheRead: 100, cost: { total: 0.004 } } } }, tokens: { inputTokens: 20, cachedInputTokens: 100, outputTokens: 10 }, price: 0.004 },
-  { name: "cursor", execute: async () => (await import("../../../packages/adapters/cursor-local/src/server/execute.js")).execute,
-    event: { type: "result", usage: { input_tokens: 20, cache_read_input_tokens: 100, output_tokens: 10 }, total_cost_usd: 0.004 }, tokens: { inputTokens: 20, cachedInputTokens: 100, outputTokens: 10 }, price: 0.004 },
-  { name: "gemini", execute: async () => (await import("../../../packages/adapters/gemini-local/src/server/execute.js")).execute,
-    event: { type: "result", usage: { input_tokens: 120, cached_input_tokens: 100, output_tokens: 10 }, total_cost_usd: 0.004 }, tokens: { inputTokens: 20, cachedInputTokens: 100, outputTokens: 10 }, price: 0.004 },
-  { name: "kimi", execute: async () => (await import("../../../packages/adapters/kimi-local/src/server/execute.js")).execute,
-    event: { type: "assistant", content: "partial work" }, price: null },
 ];
 
 describe("CLI adapter accounting on timeout", () => {
@@ -249,24 +239,9 @@ describe("CLI adapter accounting on timeout", () => {
 
 
 describe("incremental protocol accounting", () => {
-  it.each(["turn.failed", "error", "turn.started"])("saves an unpriced Codex %s checkpoint before exposing its log", async (type) => {
-    const { createCodexJsonlParser } = await import("../../../packages/adapters/codex-local/src/server/parse.js");
-    const { createUsageCheckpointLog } = await import("@paperclipai/adapter-utils/usage-checkpoint");
-    const consume = createCodexJsonlParser();
-    const order: string[] = [];
-    const saved = vi.fn(async () => { order.push("receipt"); });
-    const parsed = vi.fn((records: string) => {
-      const result = consume(records);
-      return { usage: result.usageReported ? result.usage : undefined, complete: result.usageComplete, costStatus: "unpriced" as const, costUsd: null };
-    });
-    const log = createUsageCheckpointLog(async () => { order.push("log"); }, saved, parsed);
-    await log("stdout", JSON.stringify({ type, message: "private provider failure" }) + "\n");
-    // No flush or adapter return has happened: a host crash after this point
-    // must preserve the unknown usage and keep the reservation pending.
-    expect(saved).toHaveBeenCalledWith(expect.objectContaining({ complete: false, costUsd: null, costStatus: "unpriced", usage: undefined }));
-    expect(order).toEqual(["receipt", "log"]);
-    expect(parsed.mock.calls[0][0]).not.toContain("private provider failure");
-  });
+  // The "saves an unpriced Codex %s checkpoint" test lived here. It drove the
+  // deleted codex JSONL parser (createCodexJsonlParser) directly. Deleted
+  // with the adapter deletion, 8 Nov 2026.
 
   it("keeps Claude message updates idempotent and preserves immutable snapshots", async () => {
     const { createClaudeStreamParser } = await import("../../../packages/adapters/claude-local/src/server/parse.js");
@@ -282,11 +257,9 @@ describe("incremental protocol accounting", () => {
     expect(final).toMatchObject({ model: "actual-model", costUsd: 1, usage: { inputTokens: 9, outputTokens: 8 } });
   });
   it.each(cases.filter(item => !["claude", "kimi"].includes(item.name)))("updates $name totals once per newly received record", async fixture => {
+    // Only the opencode parser remains; the codex/cursor/gemini/pi parsers
+    // died with their adapters.
     const factories = {
-      codex: async () => (await import("../../../packages/adapters/codex-local/src/server/parse.js")).createCodexJsonlParser(),
-      cursor: async () => (await import("../../../packages/adapters/cursor-local/src/server/parse.js")).createCursorJsonlParser(),
-      gemini: async () => (await import("../../../packages/adapters/gemini-local/src/server/parse.js")).createGeminiJsonlParser(),
-      pi: async () => (await import("../../../packages/adapters/pi-local/src/server/parse.js")).createPiJsonlParser(),
       opencode: async () => (await import("../../../packages/adapters/opencode-local/src/server/parse.js")).createOpenCodeJsonlParser(),
     };
     const consume = await factories[fixture.name as keyof typeof factories]();
@@ -294,7 +267,7 @@ describe("incremental protocol accounting", () => {
     const first = consume(line);
     const second = consume(line);
     expect(first.usage).toMatchObject(fixture.tokens!);
-    const multiplier = fixture.name === "codex" ? 1 : 2;
+    const multiplier = 2; // only the opencode fixture remains
     expect(second.usage).toMatchObject(Object.fromEntries(Object.entries(fixture.tokens!).map(([key, count]) => [key, count * multiplier])));
   });
 });

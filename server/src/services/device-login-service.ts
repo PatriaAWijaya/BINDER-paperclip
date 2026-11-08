@@ -17,17 +17,19 @@ import type {
 } from "@paperclipai/shared";
 import { toPublicAdapterAuthSessionStatus } from "@paperclipai/shared";
 import {
-  CODEX_DEVICE_LOGIN_COMMAND as DEFAULT_CODEX_LOGIN_COMMAND,
   parseDeviceLoginPrompt,
+  type DeviceLoginPrompt,
+} from "./device-login-parse.js";
+import {
+  CODEX_DEVICE_LOGIN_COMMAND as DEFAULT_CODEX_LOGIN_COMMAND,
   runDeviceLogin,
   type DeviceLoginOutcome as RunnerDeviceLoginOutcome,
-  type DeviceLoginPrompt,
   type SandboxLoginDriver,
-} from "@paperclipai/adapter-codex-local/server";
+} from "./device-login-runner.js";
 import {
   GROK_DEVICE_LOGIN_COMMAND as DEFAULT_GROK_LOGIN_COMMAND,
   parseGrokDeviceLoginPrompt,
-} from "@paperclipai/adapter-grok-local/server";
+} from "./grok-device-login-parse.js";
 import type { AdapterLoginPrompt } from "@paperclipai/adapter-utils";
 import {
   createLoginPtyTransport,

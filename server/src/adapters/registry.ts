@@ -31,79 +31,11 @@ import {
   agentConfigurationDoc as claudeAgentConfigurationDoc,
   models as claudeModels,
 } from "@paperclipai/adapter-claude-local";
-import {
-  execute as codexExecute,
-  listCodexSkills,
-  syncCodexSkills,
-  testEnvironment as codexTestEnvironment,
-  sessionCodec as codexSessionCodec,
-  getQuotaWindows as codexGetQuotaWindows,
-  getConfigSchema as getCodexConfigSchema,
-  CODEX_DEVICE_LOGIN_COMMAND,
-  parseDeviceLoginPrompt,
-} from "@paperclipai/adapter-codex-local/server";
-import {
-  agentConfigurationDoc as codexAgentConfigurationDoc,
-  models as codexModels,
-} from "@paperclipai/adapter-codex-local";
-import {
-  execute as cursorExecute,
-  listCursorSkills,
-  syncCursorSkills,
-  testEnvironment as cursorTestEnvironment,
-  sessionCodec as cursorSessionCodec,
-} from "@paperclipai/adapter-cursor-local/server";
-import {
-  agentConfigurationDoc as cursorAgentConfigurationDoc,
-  models as cursorModels,
-} from "@paperclipai/adapter-cursor-local";
-import {
-  execute as cursorCloudExecute,
-  getConfigSchema as getCursorCloudConfigSchema,
-  sessionCodec as cursorCloudSessionCodec,
-  testEnvironment as cursorCloudTestEnvironment,
-} from "@paperclipai/adapter-cursor-cloud/server";
-import { agentConfigurationDoc as cursorCloudAgentConfigurationDoc } from "@paperclipai/adapter-cursor-cloud";
-import {
-  execute as geminiExecute,
-  listGeminiSkills,
-  syncGeminiSkills,
-  testEnvironment as geminiTestEnvironment,
-  sessionCodec as geminiSessionCodec,
-  getConfigSchema as getGeminiConfigSchema,
-} from "@paperclipai/adapter-gemini-local/server";
-import {
-  agentConfigurationDoc as geminiAgentConfigurationDoc,
-  models as geminiModels,
-} from "@paperclipai/adapter-gemini-local";
-import {
-  execute as grokExecute,
-  listGrokSkills,
-  syncGrokSkills,
-  testEnvironment as grokTestEnvironment,
-  sessionCodec as grokSessionCodec,
-  GROK_DEVICE_LOGIN_COMMAND,
-  parseGrokDeviceLoginPrompt,
-} from "@paperclipai/adapter-grok-local/server";
-import {
-  agentConfigurationDoc as grokAgentConfigurationDoc,
-  models as grokModels,
-} from "@paperclipai/adapter-grok-local";
-import {
-  execute as kimiExecute,
-  listKimiSkills,
-  syncKimiSkills,
-  testEnvironment as kimiTestEnvironment,
-  sessionCodec as kimiSessionCodec,
-} from "@paperclipai/adapter-kimi-local/server";
-import {
-  agentConfigurationDoc as kimiAgentConfigurationDoc,
-  models as kimiModels,
-} from "@paperclipai/adapter-kimi-local";
-import {
-  createHermesGatewayServerAdapter,
-  createHermesLocalServerAdapter,
-} from "@paperclipai/hermes-paperclip-adapter";
+import { models as codexCliModels } from "@paperclipai/shared";
+import { grokModels } from "@paperclipai/shared/grok-cli-models";
+import { geminiModels } from "@paperclipai/shared/gemini-cli-models";
+import { kimiModels } from "@paperclipai/shared/kimi-cli-models";
+import { cursorModels } from "@paperclipai/shared/cursor-cli-models";
 import {
   execute as openCodeExecute,
   listOpenCodeSkills,
@@ -116,25 +48,6 @@ import {
   agentConfigurationDoc as openCodeAgentConfigurationDoc,
   models as openCodeModels,
 } from "@paperclipai/adapter-opencode-local";
-import {
-  execute as openclawGatewayExecute,
-  testEnvironment as openclawGatewayTestEnvironment,
-} from "@paperclipai/adapter-openclaw-gateway/server";
-import {
-  agentConfigurationDoc as openclawGatewayAgentConfigurationDoc,
-  models as openclawGatewayModels,
-} from "@paperclipai/adapter-openclaw-gateway";
-import { listCodexModels, refreshCodexModels } from "./codex-models.js";
-import { listCursorModels } from "./cursor-models.js";
-import {
-  execute as piExecute,
-  listPiSkills,
-  syncPiSkills,
-  testEnvironment as piTestEnvironment,
-  sessionCodec as piSessionCodec,
-  listPiModels,
-} from "@paperclipai/adapter-pi-local/server";
-import { agentConfigurationDoc as piAgentConfigurationDoc } from "@paperclipai/adapter-pi-local";
 import { BUILTIN_ADAPTER_TYPES } from "./builtin-adapter-types.js";
 import { buildExternalAdapters } from "./plugin-loader.js";
 import { isCloudManagedInstance } from "../services/cloud-instance.js";
@@ -206,17 +119,9 @@ function buildNpmRuntimeCommandSpec(
   };
 }
 
-function buildCursorRuntimeCommandSpec(config: Record<string, unknown>): AdapterRuntimeCommandSpec {
-  const command = readConfiguredCommand(config, "agent");
-  return {
-    command,
-    detectCommand: command,
-    installCommand: null,
-  };
-}
 
 const retiredAcpxMessage =
-  "The acpx_local adapter has been retired. Existing Claude and Codex ACPX agents should be migrated to claude_local or codex_local with adapterConfig.engine=\"acp\".";
+  "The acpx_local adapter has been retired. Existing Claude and Codex ACPX agents should be migrated to claude_local with adapterConfig.engine=\"acp\".";
 
 const retiredAcpxAgentConfigurationDoc = `# acpx_local retired
 
@@ -225,7 +130,6 @@ Adapter: acpx_local
 The standalone ACPX adapter has been retired. Use:
 
 - claude_local with adapterConfig.engine="acp" for Claude ACP execution.
-- codex_local with adapterConfig.engine="acp" for Codex ACP execution.
 
 Paperclip keeps this tombstone registered so stale acpx_local rows fail clearly instead of falling back to the process adapter.
 `;
@@ -256,15 +160,6 @@ const claudeLoginCapability: AdapterLoginCapability = {
 // host-side timeout. The device-login flow writes its credential inside the
 // sandbox, so the capability declares no terminal credential capture and no
 // completion claim.
-const codexLoginCapability: AdapterLoginCapability = {
-  panelMode: "displayed_code",
-  timeoutPolicy: "caller_bounded",
-  getCommand: () => CODEX_DEVICE_LOGIN_COMMAND,
-  parsePrompt: (output) => {
-    const prompt = parseDeviceLoginPrompt(output);
-    return prompt ? { url: prompt.url, code: prompt.code } : null;
-  },
-};
 
 // The Grok interactive login capability. Grok runs `grok login --device-auth`
 // on a real pseudo-terminal, the same way Codex does. The flow shows a
@@ -274,15 +169,6 @@ const codexLoginCapability: AdapterLoginCapability = {
 // completion claim. `getCommand` is descriptive only: the login path selects
 // the real command from the closed key map in `login-command.ts`, never from
 // this member.
-const grokLoginCapability: AdapterLoginCapability = {
-  panelMode: "displayed_code",
-  timeoutPolicy: "caller_bounded",
-  getCommand: () => GROK_DEVICE_LOGIN_COMMAND,
-  parsePrompt: (output) => {
-    const prompt = parseGrokDeviceLoginPrompt(output);
-    return prompt ? { url: prompt.url, code: prompt.code } : null;
-  },
-};
 
 const claudeLocalAdapter: ServerAdapterModule = {
   type: "claude_local",
@@ -347,7 +233,7 @@ const acpxLocalAdapter: ServerAdapterModule = {
           code: "acpx_local_retired",
           level: "error",
           message: retiredAcpxMessage,
-          hint: "Set the agent adapter to claude_local or codex_local and set adapterConfig.engine to acp.",
+          hint: "Set the agent adapter to claude_local and set adapterConfig.engine to acp.",
         },
       ],
     };
@@ -360,37 +246,6 @@ const acpxLocalAdapter: ServerAdapterModule = {
   getConfigSchema: () => ({ fields: [] }),
 };
 
-const codexLocalAdapter: ServerAdapterModule = {
-  type: "codex_local",
-  runtimeToolDelivery: "native_mcp",
-  execute: codexExecute,
-  testEnvironment: codexTestEnvironment,
-  acp: {
-    agentId: "codex",
-    skillsMode: "ephemeral",
-    prerequisites: {
-      nodeRange: ">=24.11.0",
-      packages: ["@agentclientprotocol/codex-acp"],
-    },
-  },
-  listSkills: listCodexSkills,
-  syncSkills: syncCodexSkills,
-  sessionCodec: codexSessionCodec,
-  sessionManagement: getAdapterSessionManagement("codex_local") ?? undefined,
-  supportsToolRefreshOnResume: true,
-  models: codexModels,
-  listModels: listCodexModels,
-  refreshModels: refreshCodexModels,
-  supportsLocalAgentJwt: true,
-  supportsInstructionsBundle: true,
-  instructionsPathKey: "instructionsFilePath",
-  requiresMaterializedRuntimeSkills: false,
-  getRuntimeCommandSpec: (config) => buildNpmRuntimeCommandSpec(config, "codex", "@openai/codex"),
-  agentConfigurationDoc: codexAgentConfigurationDoc,
-  getConfigSchema: getCodexConfigSchema,
-  getQuotaWindows: codexGetQuotaWindows,
-  loginCapability: codexLoginCapability,
-};
 
 const paperclipRunnerAdapter: ServerAdapterModule = {
   type: "paperclip_runner",
@@ -606,23 +461,23 @@ const paperclipRunnerAdapter: ServerAdapterModule = {
     const result = await openCodeTestEnvironment(context);
     return { ...result, adapterType: "paperclip_runner" };
   },
-  listSkills: listCodexSkills,
-  syncSkills: syncCodexSkills,
-  sessionCodec: codexSessionCodec,
+  listSkills: listOpenCodeSkills,
+  syncSkills: syncOpenCodeSkills,
+  sessionCodec: openCodeSessionCodec,
   models: [
-    ...codexModels,
+    ...openCodeModels,
     { id: DEFAULT_OPENCODE_RUNNER_MODEL, label: "OpenRouter · DeepSeek V4 Flash 0731" },
     { id: DEFAULT_ACPX_RUNNER_MODELS.claude, label: "Claude Opus 5.5" },
     { id: "global.anthropic.claude-sonnet-4-6", label: "Amazon Bedrock · Claude Sonnet 4.6 (global)" },
   ],
   listModels: async () => [
-    ...await listCodexModels(),
+    ...await listOpenCodeModels(),
     { id: DEFAULT_OPENCODE_RUNNER_MODEL, label: "OpenRouter · DeepSeek V4 Flash 0731" },
     { id: DEFAULT_ACPX_RUNNER_MODELS.claude, label: "Claude Opus 5.5" },
     { id: "global.anthropic.claude-sonnet-4-6", label: "Amazon Bedrock · Claude Sonnet 4.6 (global)" },
   ],
   refreshModels: async () => [
-    ...await refreshCodexModels(),
+    ...await listOpenCodeModels(),
     { id: DEFAULT_OPENCODE_RUNNER_MODEL, label: "OpenRouter · DeepSeek V4 Flash 0731" },
     { id: DEFAULT_ACPX_RUNNER_MODELS.claude, label: "Claude Opus 5.5" },
     { id: "global.anthropic.claude-sonnet-4-6", label: "Amazon Bedrock · Claude Sonnet 4.6 (global)" },
@@ -826,147 +681,15 @@ const paperclipRunnerAdapter: ServerAdapterModule = {
       },
     ],
   }),
-  loginCapability: codexLoginCapability,
 };
 
-const cursorLocalAdapter: ServerAdapterModule = {
-  type: "cursor",
-  runtimeToolDelivery: "environment",
-  execute: cursorExecute,
-  testEnvironment: cursorTestEnvironment,
-  listSkills: listCursorSkills,
-  syncSkills: syncCursorSkills,
-  sessionCodec: cursorSessionCodec,
-  sessionManagement: getAdapterSessionManagement("cursor") ?? undefined,
-  supportsToolRefreshOnResume: true,
-  models: cursorModels,
-  listModels: listCursorModels,
-  supportsLocalAgentJwt: true,
-  supportsInstructionsBundle: true,
-  instructionsPathKey: "instructionsFilePath",
-  requiresMaterializedRuntimeSkills: true,
-  getRuntimeCommandSpec: buildCursorRuntimeCommandSpec,
-  agentConfigurationDoc: cursorAgentConfigurationDoc,
-};
 
-const cursorCloudAdapter: ServerAdapterModule = {
-  type: "cursor_cloud",
-  runtimeToolDelivery: "invocation_context",
-  execute: cursorCloudExecute,
-  testEnvironment: cursorCloudTestEnvironment,
-  sessionCodec: cursorCloudSessionCodec,
-  sessionManagement: getAdapterSessionManagement("cursor_cloud") ?? undefined,
-  models: [],
-  supportsLocalAgentJwt: false,
-  supportsInstructionsBundle: true,
-  instructionsPathKey: "instructionsFilePath",
-  requiresMaterializedRuntimeSkills: false,
-  agentConfigurationDoc: cursorCloudAgentConfigurationDoc,
-  getConfigSchema: getCursorCloudConfigSchema,
-};
 
-const geminiLocalAdapter: ServerAdapterModule = {
-  type: "gemini_local",
-  runtimeToolDelivery: "environment",
-  execute: geminiExecute,
-  testEnvironment: geminiTestEnvironment,
-  acp: {
-    agentId: "gemini",
-    skillsMode: "ephemeral",
-    prerequisites: {
-      nodeRange: ">=24.11.0",
-      packages: ["@google/gemini-cli"],
-    },
-  },
-  listSkills: listGeminiSkills,
-  syncSkills: syncGeminiSkills,
-  sessionCodec: geminiSessionCodec,
-  sessionManagement: getAdapterSessionManagement("gemini_local") ?? undefined,
-  supportsToolRefreshOnResume: true,
-  models: geminiModels,
-  supportsLocalAgentJwt: true,
-  supportsInstructionsBundle: true,
-  instructionsPathKey: "instructionsFilePath",
-  requiresMaterializedRuntimeSkills: true,
-  getRuntimeCommandSpec: (config) =>
-    buildNpmRuntimeCommandSpec(config, "gemini", "@google/gemini-cli"),
-  agentConfigurationDoc: geminiAgentConfigurationDoc,
-  getConfigSchema: getGeminiConfigSchema,
-};
 
-const grokLocalAdapter: ServerAdapterModule = {
-  type: "grok_local",
-  runtimeToolDelivery: "environment",
-  execute: grokExecute,
-  testEnvironment: grokTestEnvironment,
-  listSkills: listGrokSkills,
-  syncSkills: syncGrokSkills,
-  sessionCodec: grokSessionCodec,
-  sessionManagement: getAdapterSessionManagement("grok_local") ?? undefined,
-  supportsToolRefreshOnResume: true,
-  models: grokModels,
-  supportsLocalAgentJwt: true,
-  supportsInstructionsBundle: true,
-  instructionsPathKey: "instructionsFilePath",
-  requiresMaterializedRuntimeSkills: true,
-  getRuntimeCommandSpec: (config) => ({
-    command: readConfiguredCommand(config, "grok"),
-    detectCommand: readConfiguredCommand(config, "grok"),
-    installCommand: null,
-  }),
-  agentConfigurationDoc: grokAgentConfigurationDoc,
-  loginCapability: grokLoginCapability,
-};
 
-const kimiLocalAdapter: ServerAdapterModule = {
-  type: "kimi_local",
-  runtimeToolDelivery: "environment",
-  execute: kimiExecute,
-  testEnvironment: kimiTestEnvironment,
-  acp: {
-    agentId: "kimi",
-    skillsMode: "ephemeral",
-    prerequisites: {
-      nodeRange: ">=20.0.0",
-      packages: ["@moonshot-ai/kimi-code"],
-    },
-  },
-  listSkills: listKimiSkills,
-  syncSkills: syncKimiSkills,
-  sessionCodec: kimiSessionCodec,
-  sessionManagement: getAdapterSessionManagement("kimi_local") ?? undefined,
-  supportsToolRefreshOnResume: true,
-  models: kimiModels,
-  supportsLocalAgentJwt: true,
-  supportsInstructionsBundle: true,
-  instructionsPathKey: "instructionsFilePath",
-  requiresMaterializedRuntimeSkills: true,
-  getRuntimeCommandSpec: (config) =>
-    buildNpmRuntimeCommandSpec(config, "kimi", "@moonshot-ai/kimi-code"),
-  agentConfigurationDoc: kimiAgentConfigurationDoc,
-};
 
-const hermesGatewayAdapter: ServerAdapterModule = {
-  ...createHermesGatewayServerAdapter(),
-  runtimeToolDelivery: "invocation_context",
-};
 
-const hermesLocalAdapter: ServerAdapterModule = {
-  ...createHermesLocalServerAdapter(),
-  runtimeToolDelivery: "environment",
-};
 
-const openclawGatewayAdapter: ServerAdapterModule = {
-  type: "openclaw_gateway",
-  runtimeToolDelivery: "invocation_context",
-  execute: openclawGatewayExecute,
-  testEnvironment: openclawGatewayTestEnvironment,
-  models: openclawGatewayModels,
-  supportsLocalAgentJwt: false,
-  supportsInstructionsBundle: false,
-  requiresMaterializedRuntimeSkills: false,
-  agentConfigurationDoc: openclawGatewayAgentConfigurationDoc,
-};
 
 const openCodeLocalAdapter: ServerAdapterModule = {
   type: "opencode_local",
@@ -988,26 +711,6 @@ const openCodeLocalAdapter: ServerAdapterModule = {
   agentConfigurationDoc: openCodeAgentConfigurationDoc,
 };
 
-const piLocalAdapter: ServerAdapterModule = {
-  type: "pi_local",
-  runtimeToolDelivery: "environment",
-  execute: piExecute,
-  testEnvironment: piTestEnvironment,
-  listSkills: listPiSkills,
-  syncSkills: syncPiSkills,
-  sessionCodec: piSessionCodec,
-  sessionManagement: getAdapterSessionManagement("pi_local") ?? undefined,
-  supportsToolRefreshOnResume: true,
-  models: [],
-  listModels: listPiModels,
-  supportsLocalAgentJwt: true,
-  supportsInstructionsBundle: true,
-  instructionsPathKey: "instructionsFilePath",
-  requiresMaterializedRuntimeSkills: true,
-  getRuntimeCommandSpec: (config) =>
-    buildNpmRuntimeCommandSpec(config, "pi", "@mariozechner/pi-coding-agent"),
-  agentConfigurationDoc: piAgentConfigurationDoc,
-};
 
 const adaptersByType = new Map<string, ServerAdapterModule>();
 
@@ -1024,18 +727,8 @@ function registerBuiltInAdapters() {
   for (const adapter of [
     acpxLocalAdapter,
     claudeLocalAdapter,
-    codexLocalAdapter,
     paperclipRunnerAdapter,
     openCodeLocalAdapter,
-    piLocalAdapter,
-    cursorCloudAdapter,
-    cursorLocalAdapter,
-    geminiLocalAdapter,
-    grokLocalAdapter,
-    kimiLocalAdapter,
-    hermesGatewayAdapter,
-    hermesLocalAdapter,
-    openclawGatewayAdapter,
     processAdapter,
     httpAdapter,
   ]) {
@@ -1203,15 +896,29 @@ function declaredModelsForAdapter(type: string): { id: string; label: string }[]
     : null;
 }
 
+/**
+ * Static CLI model catalogs for harness names whose adapter packages were
+ * deleted. The Codex/Grok/Gemini CLIs still exist (the Paperclip Runner's
+ * providers use them), so their model lists still live in shared — only the
+ * adapter packages are gone. `listAdapterModels`/`refreshAdapterModels`
+ * fall back to these catalogs so the models route, the pool catalog, and
+ * built-in-agent model validation keep working for runner agents. This is
+ * NOT an adapter registration: these types have no def, no execute path,
+ * and no login capability.
+ */
+const STATIC_CLI_MODEL_CATALOGS: Readonly<Record<string, readonly { id: string; label: string }[]>> = {
+  codex_local: codexCliModels,
+  grok_local: grokModels,
+  gemini_local: geminiModels,
+  kimi_local: kimiModels,
+  cursor: cursorModels,
+};
+
 export async function listAdapterModels(type: string): Promise<{ id: string; label: string }[]> {
   const declaredModels = declaredModelsForAdapter(type);
   if (declaredModels) return declaredModels;
   const adapter = findActiveServerAdapter(type);
-  if (!adapter) return [];
-  // The built-in Codex adapter's OpenAI discovery includes image, audio, and
-  // embedding models that Codex cannot run. Use its curated list; declared
-  // models above and custom adapter discovery remain authoritative.
-  if (adapter === codexLocalAdapter) return adapter.models ?? [];
+  if (!adapter) return [...(STATIC_CLI_MODEL_CATALOGS[type] ?? [])];
   if (adapter.listModels) {
     const discovered = await adapter.listModels();
     if (discovered.length > 0) return discovered;
@@ -1222,9 +929,8 @@ export async function listAdapterModels(type: string): Promise<{ id: string; lab
 export async function refreshAdapterModels(type: string): Promise<{ id: string; label: string }[]> {
   const declaredModels = declaredModelsForAdapter(type);
   if (declaredModels) return declaredModels;
-  if (findActiveServerAdapter(type) === codexLocalAdapter) return listAdapterModels(type);
   const adapter = findActiveServerAdapter(type);
-  if (!adapter) return [];
+  if (!adapter) return [...(STATIC_CLI_MODEL_CATALOGS[type] ?? [])];
   if (adapter.refreshModels) {
     const refreshed = await adapter.refreshModels();
     if (refreshed.length > 0) return refreshed;
