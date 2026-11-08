@@ -1,0 +1,2 @@
+DROP INDEX "agents_binder_ceo_singleton_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "agents_binder_ceo_singleton_idx" ON "agents" USING btree (("metadata" -> 'binder' ->> 'ceo')) WHERE ("agents"."metadata" -> 'binder' ->> 'ceo') = 'true';

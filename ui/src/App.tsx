@@ -806,6 +806,13 @@ export function App() {
           <Route element={<ShellConfigurationGate loaded={streamlinedUiLoaded} allowPendingTaskDetail={classicStreamlinedUiLoaded && !coordinatorWorkspaceLoaded} />}>
           <Route index element={<CompanyRootRedirect />} />
           <Route path="onboarding" element={<OnboardingRoutePage />} />
+          {/* BINDER hero tanpa prefix company (audit Fase 3.6): dengan 0
+              company, rute ini adalah satu-satunya jalan ke empty state
+              "Belum ada company" — tanpanya /hero jatuh ke NotFound dan
+              rute hero ber-prefix (/:companyPrefix/hero) tidak pernah
+              tercapai karena tidak ada prefix. Mengikuti pola rute
+              unprefixed yang sudah dicadangkan (PAP-13002). */}
+          <Route path="hero" element={<BinderHero />} />
           <Route path="instance" element={<LegacySettingsRedirect />} />
           <Route path="instance/settings" element={<LegacySettingsRedirect />} />
           <Route path="instance/settings/*" element={<LegacySettingsRedirect />} />

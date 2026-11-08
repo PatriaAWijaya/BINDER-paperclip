@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "agents_binder_ceo_singleton_idx" ON "agents" USING btree ("id") WHERE ("agents"."metadata" -> 'binder' ->> 'ceo') = 'true';

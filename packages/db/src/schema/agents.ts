@@ -1,4 +1,5 @@
 import type { AgentAppearance, AgentLifecycleState, AgentLifecycleOperation } from "@paperclipai/shared";
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   pgTable,
@@ -10,6 +11,7 @@ import {
   jsonb,
   index,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { environments } from "./environments.js";
@@ -56,5 +58,19 @@ export const agents = pgTable(
     companyStatusIdx: index("agents_company_status_idx").on(table.companyId, table.status),
     companyReportsToIdx: index("agents_company_reports_to_idx").on(table.companyId, table.reportsTo),
     companyDefaultEnvironmentIdx: index("agents_company_default_environment_idx").on(table.companyId, table.defaultEnvironmentId),
+    // BINDER CEO singleton di level DB (audit Tahap 3 Fase 3.6; P0-1):
+    // service (binder-ceo.ts) sudah menegakkan satu CEO per akun, tapi
+    // dua registrasi bersamaan di company berbeda bisa lolos dari cek
+    // service (lock admission per-company). Index ini menutup celah itu.
+    // Diskriminatornya metadata.binder.ceo=true (hanya registerCeo yang
+    // menyetelnya) — BUKAN role='ceo', karena Paperclip memakai 'ceo'
+    // sebagai role agen generik (boleh ada banyak).
+    // PENTING: ekspresi yang diindeks HARUS konstanta 'true' untuk semua
+    // baris yang cocok — unique index di atas `id` (sudah unik via PK)
+    // adalah vakum dan tidak pernah menolak apa pun (ditangkap test
+    // Fase 3.6; migrasi 0446 diperbaiki oleh 0447).
+    binderCeoSingletonIdx: uniqueIndex("agents_binder_ceo_singleton_idx")
+      .on(sql`(${table.metadata} -> 'binder' ->> 'ceo')`)
+      .where(sql`(${table.metadata} -> 'binder' ->> 'ceo') = 'true'`),
   }),
 );

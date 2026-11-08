@@ -139,6 +139,47 @@ const support = await getEmbeddedPostgresTestSupport();
     await expect(registerCeo(db, { companyId: otherCompanyId })).rejects.toThrow(/satu CEO/i);
   });
 
+  it("DB menolak CEO kedua langsung (partial unique index — celah race antar-company)", async () => {
+    // Dua insert langsung, melewati cek service: simulasi dua registrasi
+    // bersamaan di company berbeda yang lolos dari lock admission
+    // per-company. Diskriminator index: metadata.binder.ceo=true.
+    // Drizzle membungkus galat Postgres ("Failed query: ...") — pesan
+    // "duplicate key ..." ada di rantai cause, jadi diratakan dulu.
+    const flattenError = (error: unknown): string => {
+      const parts: string[] = [];
+      let current: unknown = error;
+      while (current instanceof Error) {
+        parts.push(current.message);
+        const cause = (current as { cause?: unknown }).cause;
+        if (cause === undefined) break;
+        current = cause;
+      }
+      return parts.join(" | ");
+    };
+    const otherCompanyId = await createCompany("Binder CEO lain");
+    await db.insert(agents).values({
+      companyId,
+      name: "Edison TEST",
+      role: "ceo",
+      metadata: { binder: { ceo: true } },
+    });
+    let thrown: unknown;
+    try {
+      await db.insert(agents).values({
+        companyId: otherCompanyId,
+        name: "Edison TEST 2",
+        role: "ceo",
+        metadata: { binder: { ceo: true } },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(flattenError(thrown)).toMatch(
+      /duplicate key value violates unique constraint "agents_binder_ceo_singleton_idx"/i,
+    );
+  });
+
   it("nama bukan Edison dan runtime bukan sandbox → ditolak; model BUKAN hardcode — ganti model = ganti konfigurasi", async () => {
     await expect(registerCeo(db, { companyId, name: "Boss" })).rejects.toThrow(/Edison/);
     await expect(

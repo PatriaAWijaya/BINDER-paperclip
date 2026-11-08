@@ -70,6 +70,15 @@ const DEFAULT_MODEL_IDS = {
   anthropic: "claude-sonnet-5-5",
 } as const;
 
+/** Urutan gradien tile scrum (vonis Patria 8 Nov 2026 09:45 WIB):
+ * 1 pink→oranye, 2 biru→ungu, 3 hijau→kuning, 4 peach→pink — berulang. */
+const SCRUM_TILE_BG = [
+  "bg-binder-tile-1",
+  "bg-binder-tile-2",
+  "bg-binder-tile-3",
+  "bg-binder-tile-4",
+] as const;
+
 function SectionHeading({ icon: Icon, title }: { icon: typeof Wallet; title: string }) {
   return (
     <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
@@ -338,24 +347,28 @@ export function BinderHero() {
             value={summary?.agents.active ?? 0}
             label="Agen aktif"
             appearance="card"
+            tone="binder-tile-1"
           />
           <MetricCard
             icon={ListChecks}
             value={summary?.tasks.open ?? 0}
             label="Tugas terbuka"
             appearance="card"
+            tone="binder-tile-2"
           />
           <MetricCard
             icon={ListChecks}
             value={summary?.tasks.done ?? 0}
             label="Tugas selesai"
             appearance="card"
+            tone="binder-tile-3"
           />
           <MetricCard
             icon={ListChecks}
             value={summary?.pendingApprovals ?? 0}
             label="Persetujuan menunggu"
             appearance="card"
+            tone="binder-tile-4"
           />
         </div>
       </section>
@@ -380,18 +393,21 @@ export function BinderHero() {
               value={formatCents(funding.pool.balanceCents)}
               label="Saldo pool"
               appearance="card"
+              tone="binder-tile-1"
             />
             <MetricCard
               icon={Wallet}
               value={formatCents(funding.pool.monthlyTopUpCents)}
               label="Pagu top-up bulanan"
               appearance="card"
+              tone="binder-tile-2"
             />
             <MetricCard
               icon={Wallet}
               value={funding.envelopes.length}
               label="Amplop aktif"
               appearance="card"
+              tone="binder-tile-3"
             />
             <MetricCard
               icon={Wallet}
@@ -403,6 +419,7 @@ export function BinderHero() {
                   : `Selisih ${formatCents(Number(funding.ledgerDifferenceCents))} — periksa ledger.`
               }
               appearance="card"
+              tone="binder-tile-4"
             />
           </div>
         )}
@@ -448,39 +465,42 @@ export function BinderHero() {
         {goalsQuery.data && (
           <Card elevation="low" className="p-5">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {Object.entries(goalsByStatus).map(([status, count]) => (
-                <div key={status} className="flex flex-col gap-1">
-                  <p className="text-2xl font-semibold text-foreground tabular-nums">{count}</p>
-                  <p className="text-sm font-medium text-muted-foreground">
+              {Object.entries(goalsByStatus).map(([status, count], index) => (
+                <div
+                  key={status}
+                  className={`flex flex-col gap-1 rounded-lg px-3 py-2 ${SCRUM_TILE_BG[index % SCRUM_TILE_BG.length]}`}
+                >
+                  <p className="text-2xl font-semibold text-binder-tile-ink tabular-nums">{count}</p>
+                  <p className="text-sm font-medium text-binder-tile-ink-2">
                     Goal {GOAL_STATUS_LABELS[status] ?? status}
                   </p>
                 </div>
               ))}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
-              <div className="flex flex-col gap-1">
-                <p className="text-2xl font-semibold text-foreground tabular-nums">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="flex flex-col gap-1 rounded-lg bg-binder-tile-1 px-3 py-2">
+                <p className="text-2xl font-semibold text-binder-tile-ink tabular-nums">
                   {summary?.tasks.open ?? 0}
                 </p>
-                <p className="text-sm font-medium text-muted-foreground">Tugas terbuka</p>
+                <p className="text-sm font-medium text-binder-tile-ink-2">Tugas terbuka</p>
               </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-2xl font-semibold text-foreground tabular-nums">
+              <div className="flex flex-col gap-1 rounded-lg bg-binder-tile-2 px-3 py-2">
+                <p className="text-2xl font-semibold text-binder-tile-ink tabular-nums">
                   {summary?.tasks.inProgress ?? 0}
                 </p>
-                <p className="text-sm font-medium text-muted-foreground">Tugas berjalan</p>
+                <p className="text-sm font-medium text-binder-tile-ink-2">Tugas berjalan</p>
               </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-2xl font-semibold text-foreground tabular-nums">
+              <div className="flex flex-col gap-1 rounded-lg bg-binder-tile-3 px-3 py-2">
+                <p className="text-2xl font-semibold text-binder-tile-ink tabular-nums">
                   {summary?.tasks.blocked ?? 0}
                 </p>
-                <p className="text-sm font-medium text-muted-foreground">Tugas terblokir</p>
+                <p className="text-sm font-medium text-binder-tile-ink-2">Tugas terblokir</p>
               </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-2xl font-semibold text-foreground tabular-nums">
+              <div className="flex flex-col gap-1 rounded-lg bg-binder-tile-4 px-3 py-2">
+                <p className="text-2xl font-semibold text-binder-tile-ink tabular-nums">
                   {summary?.tasks.done ?? 0}
                 </p>
-                <p className="text-sm font-medium text-muted-foreground">Tugas selesai</p>
+                <p className="text-sm font-medium text-binder-tile-ink-2">Tugas selesai</p>
               </div>
             </div>
           </Card>

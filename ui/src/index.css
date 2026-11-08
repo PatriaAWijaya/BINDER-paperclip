@@ -203,6 +203,16 @@
   --color-binder-accent-foreground: var(--binder-accent-foreground);
   --color-binder-accent-brand: var(--binder-accent-brand);
   --color-binder-link: var(--binder-link);
+  /* BINDER hero stat tiles — gradien pastel (vonis Patria 8 Nov 2026
+     09:45 WIB: samakan di aplikasi juga). Utilitas: bg-binder-tile-1..4
+     + text-binder-tile-ink(-2). Nilai var-nya hidup di :root/.dark dan
+     IDENTIK di kedua tema (mengikuti mockup hero-page-binder v7). */
+  --color-binder-tile-ink: var(--binder-tile-ink);
+  --color-binder-tile-ink-2: var(--binder-tile-ink-2);
+  --background-image-binder-tile-1: var(--binder-tile-1-bg);
+  --background-image-binder-tile-2: var(--binder-tile-2-bg);
+  --background-image-binder-tile-3: var(--binder-tile-3-bg);
+  --background-image-binder-tile-4: var(--binder-tile-4-bg);
   /* Multiplicative radius ladder (modern shadcn/Tailwind v4 mapping):
      sm/md/lg/xl/2xl/3xl/4xl = 0.6/0.8/1.0/1.4/1.8/2.2/2.6 x the single
      --radius knob (base anchor 0.5rem = 8px; rounded-lg IS the anchor).
@@ -256,6 +266,20 @@
   --binder-accent-brand: #FF5D15;
   --binder-link: #C2410C;
   --binder-control-height: 2.75rem;
+  /* BINDER hero stat tiles — gradien pastel, tema TERANG (vonis Patria
+     8 Nov 2026 09:45 WIB). Nilai IDENTIK dengan .dark (mockup
+     hero-page-binder v7): tile 1 pink→oranye, tile 2 biru→ungu,
+     tile 3 hijau→kuning, tile 4 peach→pink. Gradien bernada
+     terang/menengah, bukan latar gelap — aturan tanpa latar gelap di
+     tema terang tetap terpenuhi. Teks di atas gradien selalu GELAP
+     di kedua tema (kontras Apple ≥4,5:1: #111111 ≈10,5:1,
+     #333333 ≈7:1 pada gradien pink). */
+  --binder-tile-1-bg: linear-gradient(135deg, #f9a8d4, #fdba74);
+  --binder-tile-2-bg: linear-gradient(135deg, #93c5fd, #c4b5fd);
+  --binder-tile-3-bg: linear-gradient(135deg, #86efac, #fde68a);
+  --binder-tile-4-bg: linear-gradient(135deg, #fdba74, #f9a8d4);
+  --binder-tile-ink: #111111;
+  --binder-tile-ink-2: #333333;
   --background: var(--binder-bg);
   --background-alt: var(--muted);
   --foreground: var(--binder-heading);
@@ -691,6 +715,15 @@
   --binder-accent-foreground: #1B1B20;
   --binder-accent-brand: #FF5D15;
   --binder-link: #FDBA74;
+  /* BINDER hero stat tiles — gradien pastel, tema GELAP. Nilai IDENTIK
+     dengan :root (vonis Patria 8 Nov 2026 09:45 WIB; mockup
+     hero-page-binder v7). Teks di atas gradien selalu GELAP. */
+  --binder-tile-1-bg: linear-gradient(135deg, #f9a8d4, #fdba74);
+  --binder-tile-2-bg: linear-gradient(135deg, #93c5fd, #c4b5fd);
+  --binder-tile-3-bg: linear-gradient(135deg, #86efac, #fde68a);
+  --binder-tile-4-bg: linear-gradient(135deg, #fdba74, #f9a8d4);
+  --binder-tile-ink: #111111;
+  --binder-tile-ink-2: #333333;
   --background: var(--binder-bg);
   --foreground: var(--binder-heading);
   --artifact-shadow-sheet: drop-shadow(0 3.406px 10px rgba(26, 26, 26, 0.18));
