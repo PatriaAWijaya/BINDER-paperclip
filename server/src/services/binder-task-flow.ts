@@ -155,8 +155,14 @@ async function agentDisplayName(tx: Db, agentId: string): Promise<string> {
  * Mesin transisi: validasi arah → CAS `status_version` → cermin
  * `issues.status` → catat transkrip + activity. Dipakai semua jalur
  * (generik, QC, vonis owner) supaya aturannya satu tempat.
+ *
+ * Diekspor untuk jalur kegagalan Sync Internal (Tahap 5, TRD Bab 4):
+ * failDesktopJob mengembalikan task In Progress → Todo langsung lewat
+ * mesin ini — tanpa pemeriksaan admission pendanaan generik, karena
+ * task sudah lolos admission saat masuk In Progress; pengembalian
+ * karena gagal adalah pembukuan, bukan pekerjaan baru.
  */
-async function applyBinderTransition(
+export async function applyBinderTransition(
   tx: Db,
   publications: ActivityPublication[],
   input: {

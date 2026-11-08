@@ -44,6 +44,12 @@ export {
   type BinderQcScore,
   type BinderApprovedAction,
 } from "./binder_task_flow.js";
+export {
+  binderDesktopJobs,
+  binderGateDecisions,
+  type BinderDesktopJob,
+  type BinderGateDecisionRow,
+} from "./binder_sync_gate.js";
 export { agentConfigRevisions } from "./agent_config_revisions.js";
 export { agentApiKeys } from "./agent_api_keys.js";
 export { agentRuntimeState } from "./agent_runtime_state.js";

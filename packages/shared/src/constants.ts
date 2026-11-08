@@ -980,8 +980,15 @@ export type BinderTaskStatus = (typeof BINDER_TASK_STATUSES)[number];
 /** Transisi yang diizinkan antar status task BINDER. */
 export const BINDER_TASK_TRANSITIONS: Record<BinderTaskStatus, readonly BinderTaskStatus[]> = {
   backlog: ["todo", "cancelled"],
+  // 'todo' dari 'in_progress' ditambahkan Tahap 5 (TRD Bab 4 / PRD Bab 6.3):
+  // VM timeout / job desktop gagal → task kembali ke Todo dengan catatan
+  // gagal. Jalur generik (transitionBinderTask) tetap memeriksa admission
+  // pendanaan saat masuk 'todo'; jalur kegagalan Sync (failDesktopJob)
+  // memakai applyBinderTransition langsung — task sudah lolos admission
+  // saat masuk In Progress, pengembalian karena gagal adalah pembukuan,
+  // bukan pekerjaan baru.
   todo: ["in_progress", "cancelled"],
-  in_progress: ["in_review", "cancelled"],
+  in_progress: ["todo", "in_review", "cancelled"],
   in_review: ["needs_owner_approval", "revision", "escalated"],
   revision: ["in_progress", "cancelled"],
   needs_owner_approval: ["done", "revision", "escalated", "cancelled"],
@@ -1061,6 +1068,123 @@ export type BinderApprovedActionKind = (typeof BINDER_APPROVED_ACTION_KINDS)[num
  * menetapkan harga review QC yang sebenarnya.
  */
 export const BINDER_QC_REVIEW_COST_CENTS = 100;
+
+/**
+ * Sync Internal + Gate Internal BINDER (PRD Bab 6.3; TRD Bab 4–5;
+ * Backend Schematic Bab 5.1 — kosong, lihat catatan di bawah; Rencana
+ * Tahap 5). Sync adalah satu-satunya jembatan resmi BINDER ↔ Mesin
+ * Desktop; Gate adalah fungsi penegak yang bisa diuji tanpa UI.
+ *
+ * CATATAN KONTRAK (celah dokumen, dilaporkan Tahap 5): Backend
+ * Schematic v0.3 Bab 5.1 ("Sync Internal — operasi internal") dan Bab 5.2
+ * ("Gate Internal — operasi internal") KOSONG — tidak ada tanda tangan
+ * operasi di sana. Dokumen itu sendiri menyatakan antarmuka sebenarnya
+ * "ditulis di adapter masing-masing setelah Gerbang Fase 0, dan tidak
+ * boleh ditebak di sini sebagai endpoint upstream yang pasti". Maka
+ * operasi di bawah ini diambil dari TRD Bab 4 (alur kontraktual +
+ * ketahanan) + TRD Bab 3.3 (field wajib VMJob) + PRD Bab 6.3 (kontrak),
+ * BUKAN dari tebakan endpoint upstream. Bila Bab 5.1/5.2 diisi kemudian,
+ * konstanta dan validator ini dicocokkan ulang oleh Code Builder.
+ */
+
+/** Status job desktop (TRD Bab 3.3; PRD Bab 6.3). */
+export const BINDER_DESKTOP_JOB_STATUSES = [
+  "queued",
+  "running",
+  "need_approval",
+  "done",
+  "failed",
+] as const;
+export type BinderDesktopJobStatus = (typeof BINDER_DESKTOP_JOB_STATUSES)[number];
+
+/**
+ * Pemetaan status job desktop → status task BINDER (PRD Bab 6.4).
+ * Status job TIDAK menggantikan status task — pemetaan ini hanya memberi
+ * tahu status task apa yang sepadan; perubahan status task tetap lewat
+ * mesin transisi BINDER (submitWorkForReview / failDesktopJob).
+ * 'done' memetakan ke 'in_review' HANYA bila artifact kembali (aturan
+ * ditegakkan fungsi pemeta, bukan konstanta ini — lihat
+ * mapDesktopJobStatusToBinderTaskStatus di service Sync).
+ */
+export const BINDER_DESKTOP_JOB_STATUS_TO_BINDER_TASK: Record<
+  BinderDesktopJobStatus,
+  BinderTaskStatus
+> = {
+  queued: "todo",
+  running: "in_progress",
+  need_approval: "needs_owner_approval",
+  done: "in_review",
+  failed: "todo",
+} as const;
+
+/** Runtime Mesin Desktop (TRD Bab 3.3). 'test_double' = adapter palsu untuk uji — BUKAN VM nyata, tidak pernah dipakai di luar test. */
+export const BINDER_DESKTOP_RUNTIMES = [
+  "local_vm_docker_podman",
+  "boat",
+  "mac_patria_per_task",
+  "test_double",
+] as const;
+export type BinderDesktopRuntime = (typeof BINDER_DESKTOP_RUNTIMES)[number];
+
+/**
+ * Jenis aksi eksternal yang dijaga Gate (TRD Bab 5). Semua jenis ini
+ * WAJIB lewat Gate; tanpa `approved_action_id` yang valid, Gate menolak.
+ */
+export const BINDER_GATE_ACTION_KINDS = [
+  "kirim",
+  "publish",
+  "bayar",
+  "ubah_akses",
+  "deploy",
+  "tulis_eksternal",
+  "hapus",
+] as const;
+export type BinderGateActionKind = (typeof BINDER_GATE_ACTION_KINDS)[number];
+
+/**
+ * Cakupan: `approved_action_id` jenis apa yang mengesahkan aksi Gate jenis
+ * apa. Kosa kata keduanya BERBEDA (TRD Bab 5 memakai kirim/publish/bayar/
+ * ubah_akses/deploy/tulis_eksternal/hapus; P1-11 memakai outreach_send/
+ * external_post/external_call/external_message/other) dan TRD tidak
+ * mendefinisikan pemetaannya — peta ini adalah keputusan Tahap 5,
+ * konservatif: 'other' hanya mengesahkan bayar/ubah_akses/deploy/
+ * tulis_eksternal/hapus (aksi yang tidak punya jenis P1-11 sendiri);
+ * kirim/publish/tulis_eksternal dipetakan ke jenis P1-11 yang sepadan.
+ * Bila TRD diperbarui dengan pemetaan resmi, peta ini diganti.
+ */
+export const BINDER_GATE_ACTION_TO_APPROVED_KINDS: Record<
+  BinderGateActionKind,
+  readonly BinderApprovedActionKind[]
+> = {
+  kirim: ["outreach_send", "external_message", "external_call"],
+  publish: ["external_post"],
+  bayar: ["other"],
+  ubah_akses: ["other"],
+  deploy: ["other"],
+  tulis_eksternal: ["external_post", "external_message", "other"],
+  hapus: ["other"],
+} as const;
+
+/**
+ * Peran divisi untuk aturan tolak TRD Bab 5 (nilai kolom `agents.role`
+ * yang disetel saat hire, Tahap 8). 'general' = tanpa aturan peran
+ * khusus. Aturan: Leads Generator — SEMUA aksi eksternal ditolak di
+ * Fase 1 tanpa pengecualian (walau ada approved_action_id); Finance —
+ * bayar (tulis pembayaran/refund/trading) ditolak tanpa pengecualian;
+ * Code Builder — deploy produksi tanpa persetujuan Patria ditolak
+ * (persetujuan = approved_action_id yang valid; aturan umum Gate sudah
+ * menolak tanpa id, jadi tidak ada cabang tambahan untuknya).
+ */
+export const BINDER_GATE_DIVISION_ROLES = ["leads", "finance", "code_builder"] as const;
+export type BinderGateDivisionRole = (typeof BINDER_GATE_DIVISION_ROLES)[number];
+
+/**
+ * Versi kontrak adapter Sync Internal (pin versi SDK — PRD Bab 6.3 /
+ * Rencana Tahap 5 poin 1). Adapter desktop WAJIB mendeklarasikan versi
+ * ini; ketidakcocokan → Sync gagal aman (tidak ada job dibuat, tidak ada
+ * aksi eksternal yang lolos). Dibaca ulang tiap upgrade adapter.
+ */
+export const BINDER_SYNC_ADAPTER_CONTRACT_VERSION = "1" as const;
 
 /**
  * BINDER CEO Edison (PRD Bab 7; rencana Tahap 3 Fase 3.4, poin 5).

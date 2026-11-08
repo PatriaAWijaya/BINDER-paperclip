@@ -13,7 +13,9 @@ type BudgetOperation = "budget.accounting.lock_wait" | "budget.accounting.recove
   | "binder.qc.submit" | "binder.action.request" | "binder.action.issue"
   | "binder.action.use" | "binder.action.revoke"
   | "binder.ceo.register" | "binder.ceo.update_budget" | "binder.ceo.update_matrix"
-  | "binder.ceo.update_model";
+  | "binder.ceo.update_model"
+  | "binder.sync.job.create" | "binder.sync.job.return_artifact" | "binder.sync.job.fail"
+  | "binder.sync.job.retry" | "binder.sync.job.need_approval" | "binder.gate.check";
 
 /** Operator-gated OpenTelemetry only; these spans contain no prompt, receipt,
  * credential, or provider error text. Diagnostics never change accounting. */
