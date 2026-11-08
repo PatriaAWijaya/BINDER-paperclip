@@ -1108,6 +1108,20 @@ export const BINDER_CEO_RUNTIME_DEFAULT = "sandbox";
 export const BINDER_CEO_BUDGET_MONTHLY_CENTS = 2000;
 
 /**
+ * Provider yang bisa diuji via Test Connection hero (PRD Bab 7; rencana
+ * Tahap 3 Fase 3.5). Hanya provider dengan endpoint daftar model publik
+ * (GET /v1/models, tanpa biaya inferensi): Meta (api.meta.ai) dan
+ * Anthropic (api.anthropic.com). Gemini/Codex menyusul bila Patria
+ * memutuskan. Kunci TIDAK PERNAH disimpan — Test Connection memakai kunci
+ * sementara sekali pakai, atau referensi `{env:NAMA_VAR}` yang sudah
+ * terpasang di server (P1-24).
+ */
+export const BINDER_TEST_CONNECTION_PROVIDERS = ["meta", "anthropic"] as const;
+export type BinderTestConnectionProvider = (typeof BINDER_TEST_CONNECTION_PROVIDERS)[number];
+/** Batas waktu satu percobaan Test Connection (15 detik). */
+export const BINDER_TEST_CONNECTION_TIMEOUT_MS = 15_000;
+
+/**
  * Matriks konektor CEO (Rencana Tahap 3 poin 5): Allowed HANYA untuk baca
  * yang aman; Ask first untuk semua tulis dan aksi destruktif; Off untuk
  * yang tidak dibutuhkan — TANPA konektor kirim eksternal.

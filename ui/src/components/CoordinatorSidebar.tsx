@@ -31,6 +31,7 @@ import { PinnedNavigationList, type PinnedNavigationItem } from "./PinnedNavigat
 const moreDestinations = [
   { label: "Search", to: "/search", icon: Search },
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
+  { label: "Hero", to: "/hero", icon: LayoutDashboard },
   { label: "Projects", to: "/projects", icon: FolderOpen },
   { label: "Routines", to: "/routines", icon: Repeat },
   { label: "Artifacts", to: "/artifacts", icon: Boxes },

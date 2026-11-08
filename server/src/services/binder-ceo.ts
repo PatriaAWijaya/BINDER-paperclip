@@ -436,6 +436,37 @@ export async function registerCeo(
 }
 
 /** Baca CEO BINDER (satu-satunya baris `agents` role 'ceo' di seluruh akun). */
+/**
+ * Konfigurasi model CEO untuk hero (rencana Tahap 3 Fase 3.5) — null bila
+ * CEO belum terdaftar (keadaan kosong, bukan galat). Hanya referensi
+ * kunci ('{env:...}'), tanpa nilai kunci (P1-24).
+ */
+export async function getCeoModelConfig(db: Db): Promise<{
+  companyId: string;
+  primary: { modelFamily: string; modelId: string; provider: string; apiKeyRef: string };
+  fallback: { modelFamily: string; modelId: string; provider: string; apiKeyRef: string };
+  runtimeDefault: string;
+  budgetMonthlyCents: number;
+} | null> {
+  const rows = await db
+    .select()
+    .from(agents)
+    .where(eq(agents.role, BINDER_CEO_ROLE))
+    .orderBy(agents.createdAt);
+  if (rows.length === 0) return null;
+  if (rows.length > 1) {
+    throw conflict("Lebih dari satu CEO terdaftar — melanggar aturan satu CEO per akun");
+  }
+  const config = readCeoConfig(rows[0]);
+  return {
+    companyId: rows[0].companyId,
+    primary: config.primary,
+    fallback: config.fallback,
+    runtimeDefault: config.runtimeDefault,
+    budgetMonthlyCents: config.budgetMonthlyCents,
+  };
+}
+
 export async function getCeo(db: Db): Promise<BinderCeoRegistration> {
   const rows = await db
     .select()

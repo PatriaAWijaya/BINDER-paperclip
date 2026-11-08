@@ -119,6 +119,11 @@ export {
 } from "./binder-ceo.js";
 
 export {
+  binderTestConnectionSchema,
+  type BinderTestConnection,
+} from "./binder-hero.js";
+
+export {
   createSmokeRunSchema,
   updateSmokeRunSchema,
   recordSmokeRunStepSchema,

@@ -188,6 +188,21 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* BINDER hero + tema Supply (PRD Bab 6; rencana Tahap 3 Fase 3.5).
+     Nilai hidup di :root/.dark (non-inline) supaya bisa di-override
+     per tema saat runtime; mapping di sini hanya meneruskan var-nya
+     ke utilitas Tailwind (bg-binder-*, text-binder-*, ...). */
+  --color-binder-bg: var(--binder-bg);
+  --color-binder-surface: var(--binder-surface);
+  --color-binder-surface-2: var(--binder-surface-2);
+  --color-binder-input: var(--binder-input);
+  --color-binder-heading: var(--binder-heading);
+  --color-binder-body: var(--binder-body);
+  --color-binder-border: var(--binder-border);
+  --color-binder-accent: var(--binder-accent);
+  --color-binder-accent-foreground: var(--binder-accent-foreground);
+  --color-binder-accent-brand: var(--binder-accent-brand);
+  --color-binder-link: var(--binder-link);
   /* Multiplicative radius ladder (modern shadcn/Tailwind v4 mapping):
      sm/md/lg/xl/2xl/3xl/4xl = 0.6/0.8/1.0/1.4/1.8/2.2/2.6 x the single
      --radius knob (base anchor 0.5rem = 8px; rounded-lg IS the anchor).
@@ -224,30 +239,47 @@
   --composer-effort-press-scale: 1.16;
   --composer-effort-halo: 0 0 0 calc(var(--spacing) * 1.5) color-mix(in oklab, var(--tc-mode-ask) 14%, transparent);
   --radius: 0.5rem;
-  --background: oklch(1 0 0);
+  /* BINDER hero + tema Supply, tema TERANG (PRD v1.17/v1.18 Bab 6;
+     Standar UI Apple 8 Nov 2026 07:51 WIB). Oranye #FF5D15 HANYA aksen
+     merek elemen besar tanpa teks — semua yang membawa teks/link/
+     tombol memakai oranye gelap #C2410C (5,18:1 di putih). Elemen
+     interaktif oranye duduk di permukaan putih, bukan latar abu. */
+  --binder-bg: #E2E2E1;
+  --binder-surface: #FFFFFF;
+  --binder-surface-2: #F9F9F8;
+  --binder-input: #F3F3F2;
+  --binder-heading: #111111;
+  --binder-body: #5C5C5C;
+  --binder-border: #DEDEDE;
+  --binder-accent: #C2410C;
+  --binder-accent-foreground: #FFFFFF;
+  --binder-accent-brand: #FF5D15;
+  --binder-link: #C2410C;
+  --binder-control-height: 2.75rem;
+  --background: var(--binder-bg);
   --background-alt: var(--muted);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --collection-filter-active: var(--color-blue-600);
-  --collection-filter-badge: var(--color-blue-600);
-  --collection-filter-badge-foreground: var(--color-white);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
+  --foreground: var(--binder-heading);
+  --card: var(--binder-surface);
+  --card-foreground: var(--binder-heading);
+  --popover: var(--binder-surface);
+  --popover-foreground: var(--binder-heading);
+  --primary: var(--binder-accent);
+  --primary-foreground: var(--binder-accent-foreground);
+  --collection-filter-active: var(--binder-accent);
+  --collection-filter-badge: var(--binder-accent);
+  --collection-filter-badge-foreground: var(--binder-accent-foreground);
+  --secondary: var(--binder-surface-2);
+  --secondary-foreground: var(--binder-heading);
+  --muted: var(--binder-surface-2);
   --muted-highlight: var(--muted);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --muted-foreground: var(--binder-body);
+  --accent: var(--binder-surface-2);
+  --accent-foreground: var(--binder-heading);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: var(--binder-border);
+  --input: var(--binder-input);
+  --ring: var(--binder-accent);
   --focus-ring-stroke-width: 1px;
   --focus-ring-halo-width: 3px;
   --focus-ring-halo: color-mix(in srgb, var(--ring) 20%, transparent);
@@ -261,15 +293,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: var(--binder-surface);
   --primary-sidebar-background: color-mix(in srgb, var(--border) 50%, var(--background));
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.88 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-foreground: var(--binder-heading);
+  --sidebar-primary: var(--binder-accent);
+  --sidebar-primary-foreground: var(--binder-accent-foreground);
+  --sidebar-accent: var(--binder-surface-2);
+  --sidebar-accent-foreground: var(--binder-heading);
+  --sidebar-border: var(--binder-border);
+  --sidebar-ring: var(--binder-accent);
   --chip-match-title-bg: oklch(0.97 0.02 265);
   --chip-match-title-fg: oklch(0.4 0.13 265);
   --chip-match-title-border: oklch(0.85 0.05 265);
@@ -645,8 +677,22 @@
 }
 
 .dark {
-  --background: oklch(0.205 0 0);
-  --foreground: oklch(0.985 0 0);
+  /* BINDER hero + tema GELAP pastel (PRD v1.17/v1.18 Bab 6). Aksen
+     oranye gelap terang jadi peach #FDBA74 di tema gelap (kontras
+     terhadap #1B1B20); #FF5D15 tetap hanya aksen merek tanpa teks. */
+  --binder-bg: #1B1B20;
+  --binder-surface: #26262D;
+  --binder-surface-2: #2E2E37;
+  --binder-input: #2E2E37;
+  --binder-heading: #F5F5F3;
+  --binder-body: #C9C9D1;
+  --binder-border: #3D3D48;
+  --binder-accent: #FDBA74;
+  --binder-accent-foreground: #1B1B20;
+  --binder-accent-brand: #FF5D15;
+  --binder-link: #FDBA74;
+  --background: var(--binder-bg);
+  --foreground: var(--binder-heading);
   --artifact-shadow-sheet: drop-shadow(0 3.406px 10px rgba(26, 26, 26, 0.18));
   --artifact-shadow-print: 0 3.406px 20px rgba(26, 26, 26, 0.18);
   --artifact-tile-hover: #202020;
@@ -659,27 +705,27 @@
   --streamlined-task-detail-bg: var(--background);
   --side-panel-streamlined-tab-hover-bg: var(--side-panel-tab-hover-bg);
   --side-panel-streamlined-tab-active-bg: color-mix(in oklab, color-mix(in oklab, var(--accent) 92%, var(--background)) 97%, var(--foreground) 3%);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --collection-filter-active: var(--color-blue-400);
+  --card: var(--binder-surface);
+  --card-foreground: var(--binder-heading);
+  --popover: var(--binder-surface);
+  --popover-foreground: var(--binder-heading);
+  --primary: var(--binder-heading);
+  --primary-foreground: var(--binder-accent-foreground);
+  --collection-filter-active: var(--binder-accent);
   --bubble-agent: oklch(0.185 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
+  --secondary: var(--binder-surface-2);
+  --secondary-foreground: var(--binder-heading);
+  --muted: var(--binder-surface-2);
   --muted-highlight: #333333; /* Paper: --dark-color-muted-highlight. */
   --background-alt: oklch(0.145 0 0); /* Paper: --dark-color-background-alt. */
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --muted-foreground: var(--binder-body);
+  --accent: var(--binder-surface-2);
+  --accent-foreground: var(--binder-heading);
   --destructive: oklch(0.637 0.237 25.331); /* Gallery feedback round 1: user preferred master's original dark destructive red over the preset's softer 0.704 0.191 22.216. */
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: var(--binder-border);
+  --input: var(--binder-input);
+  --ring: var(--binder-accent);
   --scrollbar-thumb: oklch(0.4 0 0);
   --scrollbar-thumb-hover: oklch(0.5 0 0);
   --chart-1: oklch(0.87 0 0);
@@ -687,15 +733,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: var(--binder-surface);
   --primary-sidebar-background: var(--muted);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.32 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-foreground: var(--binder-heading);
+  --sidebar-primary: var(--binder-accent);
+  --sidebar-primary-foreground: var(--binder-accent-foreground);
+  --sidebar-accent: var(--binder-surface-2);
+  --sidebar-accent-foreground: var(--binder-heading);
+  --sidebar-border: var(--binder-border);
+  --sidebar-ring: var(--binder-accent);
   --chip-match-title-bg: oklch(0.27 0.04 265 / 0.5);
   --chip-match-title-fg: oklch(0.78 0.10 265);
   --chip-match-title-border: oklch(0.4 0.06 265);

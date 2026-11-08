@@ -554,6 +554,11 @@ export const queryKeys = {
     list: (companyId: string) => ["goals", companyId] as const,
     detail: (id: string) => ["goals", "detail", id] as const,
   },
+  /** Hero per company BINDER (PRD Bab 6/7; rencana Tahap 3 Fase 3.5). */
+  binderHero: {
+    fundingSummary: (companyId: string) => ["binder-hero", "funding", companyId] as const,
+    ceoModel: (companyId: string) => ["binder-hero", "ceo-model", companyId] as const,
+  },
   artifacts: {
     list: (
       companyId: string,

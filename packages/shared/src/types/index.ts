@@ -955,6 +955,12 @@ export type {
 export type { LiveEvent, LiveDeliveryClientMessage, LiveDeliveryServerMessage } from "./live.js";
 export type { DashboardRunActivityDay, DashboardSummary } from "./dashboard.js";
 export type {
+  BinderHeroCeoModel,
+  BinderHeroFundingSummary,
+  BinderTestConnectionResult,
+  BinderTestConnectionStatus,
+} from "./binder-hero.js";
+export type {
   TimelineActorType,
   TimelineEventKind,
   TimelineEdgeKind,
