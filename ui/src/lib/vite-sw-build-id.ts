@@ -67,6 +67,7 @@ export function serviceWorkerBuildIdPlugin(
   let buildId: string | null = null;
   let outDir = "dist";
   let root = "";
+  let publicDir = "";
 
   return {
     name: "paperclip-sw-build-id",
@@ -74,6 +75,7 @@ export function serviceWorkerBuildIdPlugin(
     configResolved(config) {
       root = config.root;
       outDir = config.build.outDir;
+      publicDir = config.publicDir;
     },
     generateBundle(_options, bundle) {
       const entry = Object.values(bundle).find(
@@ -84,13 +86,27 @@ export function serviceWorkerBuildIdPlugin(
       }
     },
     closeBundle() {
-      const swPath = path.resolve(root, outDir, serviceWorkerFileName);
-      const source = fs.readFileSync(swPath, "utf8");
+      // Read the worker from the public source, not from the output dir.
+      // On a clean build the public copy has not necessarily landed in
+      // dist/ by the time closeBundle runs (Vite 8/Rolldown: a fresh
+      // `vite build` fails here with ENOENT on dist/sw.js, and a stale
+      // dist/ makes the plugin read an already-stamped worker whose
+      // placeholders are gone). public/sw.js is the contract the tests
+      // pin, so it is the only input this step may trust.
+      const sourcePath = path.resolve(publicDir, serviceWorkerFileName);
+      if (!fs.existsSync(sourcePath)) {
+        throw new Error(
+          `service worker source is missing: ${sourcePath}; the build cannot stamp a build id`,
+        );
+      }
+      const source = fs.readFileSync(sourcePath, "utf8");
       const css = fs.readFileSync(path.resolve(root, "src/index.css"), "utf8");
       const stamped = stampServiceWorkerBuildId(
         embedServiceWorkerOfflineStyles(source, css), buildId ?? "build",
       );
-      fs.writeFileSync(swPath, stamped);
+      const outPath = path.resolve(root, outDir, serviceWorkerFileName);
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      fs.writeFileSync(outPath, stamped);
     },
   };
 }

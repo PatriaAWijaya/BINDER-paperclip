@@ -1,4 +1,3 @@
-import animatedHero from "../../../announcements/examples/animated/assets/78bafb6adbfd9da899cdbb5d934b4c0b9df5d419d6f0a5104a87a7b25dcc6bd8.html?raw";
 import type { Announcement } from "@paperclipai/shared";
 
 /** Design guide / Storybook only. Never a runtime feed fallback. */
@@ -16,4 +15,7 @@ export const announcementAnimationPreview: Announcement = {
   ...announcementPreview,
   animation: { path: "assets/78bafb6adbfd9da899cdbb5d934b4c0b9df5d419d6f0a5104a87a7b25dcc6bd8.html", alt: "Agents plan, build and review work together." },
 };
-export const announcementAnimationPreviewSrc = `data:text/html;charset=utf-8,${encodeURIComponent(animatedHero)}`;
+// NOTE: the animated hero asset lived under the repo-root `announcements/`
+// demo directory, which the BINDER cleanup removed. There is no animation
+// source to embed anymore, so no `announcementAnimationPreviewSrc` data URL
+// is exported; cards that used it fall back to the static image.

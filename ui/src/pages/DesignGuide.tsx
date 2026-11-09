@@ -28,7 +28,7 @@ import { AgentChatPicker } from "@/components/AgentChatPicker";
 import { TaskChatProjectCreatedCard } from "@/components/task-chat/TaskChatProjectCreatedCard";
 import { TextAttachmentPreview } from "@/components/task-side-panel/TaskAttachmentPanel";
 import { AnnouncementCard } from "@/components/AnnouncementCard";
-import { announcementPreview, announcementAnimationPreview, announcementAnimationPreviewSrc } from "@/lib/announcement-preview";
+import { announcementPreview, announcementAnimationPreview } from "@/lib/announcement-preview";
 import { TaskDetailTasksPanel } from "@/components/task-detail/TaskDetailTasksPanel";
 import { AiConnectionDesignExamples } from "@/components/ai-connections/AiConnectionDesignExamples";
 import { SavedProviderKeySelect } from "../components/onboarding/SavedProviderKeySelect";
@@ -581,7 +581,7 @@ export function DesignGuide() {
 
       <Section title="Announcements">
         <div className="grid gap-4 md:grid-cols-2">
-          <AnnouncementCard announcement={announcementAnimationPreview} imageSrc="/announcement-preview.svg" animationSrc={announcementAnimationPreviewSrc} onDismiss={() => {}} />
+          <AnnouncementCard announcement={announcementAnimationPreview} imageSrc="/announcement-preview.svg" onDismiss={() => {}} />
           <AnnouncementCard announcement={announcementPreview} imageSrc="/announcement-preview.svg" onDismiss={() => {}} />
           <AnnouncementCard announcement={{ ...announcementPreview, image: undefined, secondaryLink: undefined }} onDismiss={() => {}} />
         </div>
