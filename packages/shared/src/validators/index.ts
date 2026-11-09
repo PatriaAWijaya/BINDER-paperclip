@@ -125,6 +125,10 @@ export {
 export {
   postizTestConnectionSchema,
   type PostizTestConnection,
+  postizBatchPushSchema,
+  type PostizBatchPush,
+  postizSyncSchema,
+  type PostizSync,
 } from "./binder-postiz.js";
 
 export {

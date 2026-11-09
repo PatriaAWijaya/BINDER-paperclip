@@ -11,6 +11,8 @@ const mockIssuesApi = vi.hoisted(() => ({
 }));
 const mockPostizApi = vi.hoisted(() => ({
   testConnection: vi.fn(),
+  batchPush: vi.fn(),
+  sync: vi.fn(),
 }));
 const mockCompanyState = vi.hoisted(() => ({
   companies: [] as Array<{ id: string; issuePrefix: string; name: string }>,
@@ -119,6 +121,28 @@ describe("BinderCalendar page", () => {
       httpStatus: 200,
       integrations: [{ id: "int-1", name: "Saleem IG", provider: "instagram" }],
     });
+    mockPostizApi.batchPush.mockResolvedValue({
+      approvedActionId: "action-1",
+      pushed: 2,
+      skipped: 0,
+      failed: 0,
+      alreadyPushed: 0,
+      results: [
+        { issueId: "issue-sal-1", outcome: "pushed", postizPostId: "pz-1", mediaMissing: true, reason: null },
+        { issueId: "issue-sal-4", outcome: "pushed", postizPostId: "pz-2", mediaMissing: true, reason: null },
+      ],
+      transportRef: "postiz-batch:pushed=2,skipped=0,already=0",
+      error: null,
+      rateLimited: false,
+    });
+    mockPostizApi.sync.mockResolvedValue({
+      checked: 2,
+      updated: 1,
+      unknown: [],
+      changes: [
+        { issueId: "issue-sal-1", postizPostId: "pz-1", previousState: "draft", nextState: "terjadwal" },
+      ],
+    });
   });
 
   afterEach(() => {
@@ -211,5 +235,78 @@ describe("BinderCalendar page", () => {
       baseUrl: "http://localhost:5000",
       apiKeyRef: "{env:POSTIZ_API_KEY}",
     });
+  });
+
+  it("kartu batch menunggu persetujuan: tombol kirim mati tanpa approved_action_id", async () => {
+    selectCompany();
+    await renderPage();
+
+    expect(container.textContent).toContain("Batch Postiz");
+    expect(container.textContent).toContain("Kirim 2 post terjadwal yang belum dikirim");
+    expect(container.textContent).toContain("Menunggu persetujuan batch");
+    expect(findButton(container, "Kirim batch ke Postiz").disabled).toBe(true);
+    expect(mockPostizApi.batchPush).not.toHaveBeenCalled();
+  });
+
+  it("Test Connection mengisi channel batch dari hasil uji", async () => {
+    selectCompany();
+    await renderPage();
+
+    const integrationInput = container.querySelector(
+      "#postiz-integration-id",
+    ) as HTMLInputElement;
+    expect(integrationInput.value).toBe("");
+    act(() => findButton(container, "Uji koneksi").click());
+    await flushReact();
+    await flushReact();
+
+    expect(integrationInput.value).toBe("int-1");
+  });
+
+  it("batch push mengirim id persetujuan + issue + channel, lalu menampilkan hasil", async () => {
+    selectCompany();
+    await renderPage();
+
+    const actionInput = container.querySelector(
+      "#postiz-approved-action-id",
+    ) as HTMLInputElement;
+    const integrationInput = container.querySelector(
+      "#postiz-integration-id",
+    ) as HTMLInputElement;
+    const keyInput = container.querySelector("#postiz-batch-api-key") as HTMLInputElement;
+    act(() => setInputValue(actionInput, "action-1"));
+    act(() => setInputValue(integrationInput, "int-1"));
+    act(() => setInputValue(keyInput, "kunci-batch-sementara"));
+    act(() => findButton(container, "Kirim batch ke Postiz").click());
+    await flushReact();
+    await flushReact();
+
+    expect(mockPostizApi.batchPush).toHaveBeenCalledWith("company-1", {
+      approvedActionId: "action-1",
+      issueIds: ["issue-sal-1", "issue-sal-4"],
+      integrationId: "int-1",
+      baseUrl: "http://localhost:5000",
+      apiKey: "kunci-batch-sementara",
+    });
+    expect(container.textContent).toContain("Batch selesai — 2 terkirim, 0 dilewati");
+    expect(container.textContent).toContain("Terkirim sebagai draf (tanpa media)");
+    expect(keyInput.value).toBe("");
+  });
+
+  it("sync mengirim rentang tanggal campaign lalu menampilkan hasil", async () => {
+    selectCompany();
+    await renderPage();
+
+    act(() => findButton(container, "Sinkronkan status Postiz").click());
+    await flushReact();
+    await flushReact();
+
+    expect(mockPostizApi.sync).toHaveBeenCalledWith("company-1", {
+      baseUrl: "http://localhost:5000",
+      apiKeyRef: "{env:POSTIZ_API_KEY}",
+      startDate: "2026-11-09T02:00:00.000Z",
+      endDate: "2026-11-17T02:00:00.000Z",
+    });
+    expect(container.textContent).toContain("Diperiksa 2 post di Postiz — 1 state diperbarui.");
   });
 });

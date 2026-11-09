@@ -964,6 +964,12 @@ export type {
   PostizIntegrationSummary,
   PostizTestConnectionResult,
   PostizTestConnectionStatus,
+  PostizPostSummary,
+  PostizBatchPostOutcome,
+  PostizBatchPostResult,
+  PostizBatchPushResult,
+  PostizSyncChange,
+  PostizSyncResult,
 } from "./binder-postiz.js";
 export type {
   TimelineActorType,

@@ -25,12 +25,13 @@ import { logger } from "../middleware/logger.js";
  * 'not_configured' ("belum terhubung") — keadaan itu jawaban, bukan
  * galat.
  *
- * BENTUK HEADER — dicatat jujur: sumber publik Postiz berbeda-beda
- * antara `Authorization: <key>` (mentah) dan `Bearer <key>`. Yang
- * dipakai di sini adalah bentuk mentah (sesuai contoh di dokumentasi
- * public API Postiz); WAJIB dikonfirmasi terhadap instance yang
- * dipakai saat uji live Fase C — bila live mengembalikan 401, coba
- * bentuk Bearer dulu sebelum menyimpulkan key-nya salah.
+ * BENTUK HEADER — TERKONFIRMASI 9 Nov 2026 (Fase B): bentuk mentah
+ * `Authorization: <key>` benar — middleware Postiz sendiri
+ * (public.auth.middleware.ts:16-20, dikutip di referensi API yang
+ * dipin ke postiz-app v2.21.6) membaca header mentah tanpa awalan
+ * Bearer, dan menulis `Bearer <key>` justru gagal code review di
+ * sana. Pesan 401 di bawah tetap menyebut Bearer sebagai fallback
+ * darurat bila sebuah instance menolak key yang benar.
  *
  * TIDAK ADA instance Postiz live di fase ini: verifikasi memakai
  * transport stub yang diinjeksikan di test; pembuktian live dengan
@@ -47,14 +48,14 @@ type PostizTestConnectionDeps = {
   env?: Record<string, string | undefined>;
 };
 
-function resolveApiKeyRef(ref: string, env: Record<string, string | undefined>): string | null {
+export function resolveApiKeyRef(ref: string, env: Record<string, string | undefined>): string | null {
   const match = /^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(ref);
   if (!match) return null;
   const value = env[match[1]]?.trim();
   return value ? value : null;
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
+export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
 

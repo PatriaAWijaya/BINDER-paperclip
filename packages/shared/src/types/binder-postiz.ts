@@ -34,3 +34,64 @@ export interface PostizTestConnectionResult {
   /** Channel yang terhubung (bukti live); null bila tidak ada panggilan. */
   integrations: PostizIntegrationSummary[] | null;
 }
+
+/** Satu post Postiz seperti dikembalikan GET /public/v1/posts. */
+export interface PostizPostSummary {
+  /** Id post Postiz (dipakai untuk mencocokkan ke issue BINDER). */
+  id: string;
+  /** State mentah dari Postiz (mis. "draft", "scheduled", "published"). */
+  state: string;
+  /** Tautan tayang bila sudah diterbitkan; null bila belum ada. */
+  releaseUrl: string | null;
+  /** Jadwal tayang ISO 8601 bila ada; null bila tidak ada. */
+  scheduledAt: string | null;
+}
+
+/** Hasil per post dalam satu batch push ke Postiz. */
+export type PostizBatchPostOutcome = "pushed" | "skipped" | "failed" | "already_pushed";
+
+export interface PostizBatchPostResult {
+  issueId: string;
+  outcome: PostizBatchPostOutcome;
+  /** Id post Postiz bila berhasil dibuat; null bila dilewati/gagal. */
+  postizPostId: string | null;
+  /** True bila draft dibuat tanpa media (visual belum ada). */
+  mediaMissing: boolean;
+  /** Alasan bahasa biasa bila dilewati/gagal; null bila berhasil. */
+  reason: string | null;
+}
+
+/** Hasil satu batch push ke Postiz (Fase B). */
+export interface PostizBatchPushResult {
+  approvedActionId: string;
+  pushed: number;
+  skipped: number;
+  failed: number;
+  alreadyPushed: number;
+  results: PostizBatchPostResult[];
+  /** Referensi transport dari executor Gate; null bila batch gagal sebelum eksekusi. */
+  transportRef: string | null;
+  /** Pesan galat batch bila berhenti di tengah (mis. rate limit); null bila tuntas. */
+  error: string | null;
+  /** True bila batch berhenti karena Postiz membatasi laju (429). */
+  rateLimited: boolean;
+}
+
+/** Satu perubahan state yang diterapkan sync status Postiz. */
+export interface PostizSyncChange {
+  issueId: string;
+  postizPostId: string;
+  previousState: string;
+  nextState: string;
+}
+
+/** Hasil satu sync status Postiz (Fase B). */
+export interface PostizSyncResult {
+  /** Jumlah post Postiz yang diperiksa dalam rentang tanggal. */
+  checked: number;
+  /** Jumlah issue BINDER yang state-nya diperbarui. */
+  updated: number;
+  /** Post Postiz dengan state yang tidak dikenal — dibiarkan, dilaporkan. */
+  unknown: { postizPostId: string; state: string }[];
+  changes: PostizSyncChange[];
+}
