@@ -5156,6 +5156,10 @@ const issueListSelect = {
   completedAt: issues.completedAt,
   cancelledAt: issues.cancelledAt,
   hiddenAt: issues.hiddenAt,
+  dueDate: issues.dueDate,
+  postizPostId: issues.postizPostId,
+  postizState: issues.postizState,
+  postizPushedAt: issues.postizPushedAt,
   createdAt: issues.createdAt,
   updatedAt: issues.updatedAt,
 };

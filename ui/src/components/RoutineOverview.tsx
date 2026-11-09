@@ -111,6 +111,10 @@ export function routineRunIssue(
     completedAt: null,
     cancelledAt: null,
     hiddenAt: null,
+    dueDate: null,
+    postizPostId: null,
+    postizState: null,
+    postizPushedAt: null,
     createdAt: run.triggeredAt,
   };
 }

@@ -1686,6 +1686,10 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           completedAt: null,
           cancelledAt: null,
           hiddenAt: null,
+          dueDate: null,
+          postizPostId: null,
+          postizState: null,
+          postizPushedAt: null,
           createdAt: now,
           updatedAt: now,
         };

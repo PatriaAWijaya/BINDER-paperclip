@@ -50,6 +50,7 @@ import { agentAvatarRoutes } from "./routes/agent-avatars.js";
 import { decisionModelRoutes } from "./routes/decision-models.js";
 import { agentObservabilityRoutes } from "./routes/agent-observability.js";
 import { binderHeroRoutes } from "./routes/binder-hero.js";
+import { binderPostizRoutes } from "./routes/binder-postiz.js";
 import { aiConnectionRoutes } from "./routes/ai-connections.js";
 import { taskWorkspaceRoutes } from "./routes/task-workspaces.js";
 import { projectToolRoutes } from "./routes/project-tools.js";
@@ -698,6 +699,7 @@ export async function createApp(
   api.use(agentChatMessageRoutes(db));
   api.use(builtInAgentRoutes(db));
   api.use(binderHeroRoutes(db));
+  api.use(binderPostizRoutes(db));
   api.use(summarySlotRoutes(db));
   api.use(statusCardRoutes(db));
   api.use(teamsCatalogRoutes(db));

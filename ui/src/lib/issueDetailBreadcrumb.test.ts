@@ -71,6 +71,10 @@ describe("issueDetailBreadcrumb", () => {
       completedAt: null,
       cancelledAt: null,
       hiddenAt: null,
+      dueDate: null,
+      postizPostId: null,
+      postizState: null,
+      postizPushedAt: null,
       project: {
         id: "project-1",
         companyId: "company-1",

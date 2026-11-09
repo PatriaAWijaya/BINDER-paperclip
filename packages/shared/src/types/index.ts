@@ -961,6 +961,11 @@ export type {
   BinderTestConnectionStatus,
 } from "./binder-hero.js";
 export type {
+  PostizIntegrationSummary,
+  PostizTestConnectionResult,
+  PostizTestConnectionStatus,
+} from "./binder-postiz.js";
+export type {
   TimelineActorType,
   TimelineEventKind,
   TimelineEdgeKind,

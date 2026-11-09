@@ -122,6 +122,10 @@ export {
   binderTestConnectionSchema,
   type BinderTestConnection,
 } from "./binder-hero.js";
+export {
+  postizTestConnectionSchema,
+  type PostizTestConnection,
+} from "./binder-postiz.js";
 
 export {
   binderDesktopRuntimeSchema,

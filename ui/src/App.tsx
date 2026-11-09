@@ -74,6 +74,7 @@ const CaseDetail = lazy(() => import("./pages/CaseDetail").then((module) => ({ d
 const Dashboard = lazy(() => import("./pages/Dashboard").then((module) => ({ default: module.Dashboard })));
 const DashboardLive = lazy(() => import("./pages/DashboardLive").then((module) => ({ default: module.DashboardLive })));
 const BinderHero = lazy(() => import("./pages/BinderHero").then((module) => ({ default: module.BinderHero })));
+const BinderCalendar = lazy(() => import("./pages/BinderCalendar").then((module) => ({ default: module.BinderCalendar })));
 const Timeline = lazy(() => import("./pages/Timeline").then((module) => ({ default: module.Timeline })));
 const Companies = lazy(() => import("./pages/Companies").then((module) => ({ default: module.Companies })));
 const AgentDetail = lazy(() => import("./pages/AgentDetailPage").then((module) => ({ default: module.AgentDetailPage })));
@@ -155,6 +156,7 @@ function boardRoutes(streamlinedUiEnabled: boolean, combinedInboxTasksEnabled: b
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="dashboard/live" element={<DashboardLive />} />
       <Route path="hero" element={<BinderHero />} />
+      <Route path="calendar" element={<BinderCalendar />} />
       <Route
         path="timeline"
         element={streamlinedUiEnabled ? <AuditCompatibilityRedirect to="/activity/timeline" /> : <Timeline />}
@@ -813,6 +815,10 @@ export function App() {
               tercapai karena tidak ada prefix. Mengikuti pola rute
               unprefixed yang sudah dicadangkan (PAP-13002). */}
           <Route path="hero" element={<BinderHero />} />
+          {/* BINDER kalender tanpa prefix company: sama seperti /hero —
+              dengan 0 company, rute ini adalah jalan ke empty state
+              "Belum ada company". */}
+          <Route path="calendar" element={<BinderCalendar />} />
           <Route path="instance" element={<LegacySettingsRedirect />} />
           <Route path="instance/settings" element={<LegacySettingsRedirect />} />
           <Route path="instance/settings/*" element={<LegacySettingsRedirect />} />

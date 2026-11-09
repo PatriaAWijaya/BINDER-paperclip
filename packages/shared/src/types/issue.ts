@@ -956,6 +956,14 @@ export interface Issue {
   completedAt: Date | null;
   cancelledAt: Date | null;
   hiddenAt: Date | null;
+  /** BINDER Postiz (opsi C): jadwal tayang post; null bila belum dijadwalkan. */
+  dueDate: Date | null;
+  /** BINDER Postiz (opsi C): id post di Postiz; null bila belum dikirim. */
+  postizPostId: string | null;
+  /** BINDER Postiz (opsi C): keadaan post di Postiz. */
+  postizState: "belum_dikirim" | "draft" | "terjadwal" | "tayang" | "gagal" | null;
+  /** BINDER Postiz (opsi C): kapan issue terakhir dikirim ke Postiz. */
+  postizPushedAt: Date | null;
   sourceTrust?: SourceTrustMetadata | null;
   labelIds?: string[];
   labels?: IssueLabel[];
@@ -1037,6 +1045,10 @@ export type CompactIssue = Pick<
   | "startedAt"
   | "completedAt"
   | "cancelledAt"
+  | "dueDate"
+  | "postizPostId"
+  | "postizState"
+  | "postizPushedAt"
   | "createdAt"
   | "updatedAt"
 > & {
